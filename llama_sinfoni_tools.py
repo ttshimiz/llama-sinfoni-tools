@@ -121,5 +121,56 @@ def remove_cont(cube, degree=1, exclude=None):
     return cube_cont_remove, fit_params
     
     
+def gauss_fit_single(x, spectrum, guess=None, errors=None, exclude=None):
+    """
+    Function to fit a single spectrum with a Gaussian
+    """
+    
+    if errors is None:
+         errors = np.ones(len(spectrum))
+         
+    model = apy_mod.models.Gaussian1D()
+    model.amplitude.min = 0
+    model.stddev.min = 0
+     
+    if guess is None:
+        model.amplitude = np.max(spectrum)
+        model.mean = x[np.argmax(spectrum)]
+        model.stddev = 3*(x[1] - x[0])
+    else:
+        model.amplitude = guess[0]
+        model.mean = guess[1]
+        model.stddev = guess[2]
     
     
+    fitter = apy_mod.fitting.LevMarLSQFitter()     
+    gauss_fit = fitter(model, x, spectrum, weights=1./errors)
+    
+    return gauss_fit
+        
+def cubefit_gauss(cube, guess=None, exclude=None):
+    """
+    Function to loop through all of the spectra in a cube and fit a gaussian
+    """
+    
+    xsize = cube.shape[1]
+    ysize = cube.shape[2]
+    nparams = 3
+    fit_params = np.zeros((xsize, ysize, nparams))
+    spec_ax = cube.spectral_axis.value
+    
+    for i in range(xsize):
+        for j in range(ysize):
+            
+            spec = cube[:, i, j].value/10**(-17)
+            
+            if np.any(~np.isnan(spec)):
+                gauss_mod = gauss_fit_single(spec_ax, spec, guess=guess, exclude=exclude)
+            
+                for n in range(nparams):
+                    fit_params[i, j, n] = gauss_mod.parameters[n]
+                
+            else:
+				fit_params[i, j, :] = np.nan
+        
+    return fit_params    
