@@ -87,4 +87,39 @@ def cont_fit_single(x, spectrum, degree=1, errors=None, exclude=None):
     return cont_fit
     
     
+def remove_cont(cube, degree=1, exclude=None):
+    """
+    Function to loop through all of the spectra in a cube and subtract out the continuum
+    """
+    
+    xsize = cube.shape[1]
+    ysize = cube.shape[2]
+    nparams = degree+1
+    fit_params = np.zeros((xsize, ysize, nparams))
+    spec_ax = cube.spectral_axis.value
+    data_cont_remove = np.zeros(cube.shape)
+    
+    for i in range(xsize):
+        for j in range(ysize):
+            
+            spec = cube[:, i, j].value/10**(-17)
+            
+            if np.any(~np.isnan(spec)):
+                cont = cont_fit_single(spec_ax, spec, degree=degree, exclude=exclude)
+            
+                for n in range(nparams):
+                    fit_params[i, j, n] = cont.parameters[n]
+                
+                data_cont_remove[:, i, j] = (spec - cont(spec_ax))*10**(-17)
+
+            else:
+				fit_params[i, j, :] = np.nan
+				data_cont_remove[:, i, j] = np.nan
+    
+    cube_cont_remove = SpectralCube(data=data_cont_remove, wcs=cube.wcs)
+    
+    return cube_cont_remove, fit_params
+    
+    
+    
     
