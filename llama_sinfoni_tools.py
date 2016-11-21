@@ -8,6 +8,7 @@ Created on Fri Nov 18 15:56:56 2016
 import numpy as np
 import astropy.units as u
 import astropy.io.fits as fits
+import astropy.modeling as apy_mod
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
 
@@ -59,3 +60,31 @@ def read_data(fn):
     cube._unit = u.W/u.meter**2/u.micron
 
     return cube
+    
+
+def cont_fit_single(x, spectrum, degree=1, errors=None, exclude=None):
+    """
+    Function to fit the continuum of a single spectrum with a polynomial.
+    """
+    
+    if errors is None:
+        errors = np.ones(len(spectrum))
+        
+    cont = apy_mod.models.Polynomial1D(degree=degree)
+    
+    # Use the endpoints of the spectrum to guess at zeroth and first order
+    # parameters
+    y1 = spectrum[0]
+    y2 = spectrum[-1]
+    x1 = x[0]
+    x2 = x[-1]
+    cont.c1 = (y2-y1)/(x2-x1)
+    cont.c0 = y1 - cont.c1*x1
+    
+    fitter = apy_mod.fitting.LevMarLSQFitter()
+    cont_fit = fitter(cont, x, spectrum, weights=1./errors)
+    
+    return cont_fit
+    
+    
+    
