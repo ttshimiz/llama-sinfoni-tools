@@ -181,3 +181,38 @@ def cubefit_gauss(cube, guess=None, exclude=None):
 				fit_params['mean'][i, j] = np.nan
 				fit_params['sigma'][i, j] = np.nan
         
+    return fit_params 
+    
+
+def calc_line_params(fit_params, line_center):
+    """
+    Function to determine the integrated line flux, velocity, and linewidth
+    Assumes the units on the amplitude are W/m^2/micron and the units on the
+    mean and sigma are micron as well.
+    """
+    
+    amp = fit_params['amplitude']
+    line_mean = fit_params['mean']
+    line_sigma = fit_params['sigma']
+    line_params = {}
+    
+    if line_mean.unit != u.micron:
+        print('Warning: Units on the line mean and sigma are not in microns.'
+              'Integrated line flux will not be correct.')
+
+    # Integrated flux is just a Gaussian integral from -inf to inf
+    int_flux = np.sqrt(2*np.pi)*amp*np.abs(line_sigma)
+    
+    # Convert the line mean and line sigma to km/s if not already
+    if line_mean.unit.physical_type != 'speed':
+        velocity = line_mean.to(u.km/u.s, equivalencies=u.doppler_optical(line_center))
+        veldisp = (line_mean+line_sigma).to(u.km/u.s, equivalencies=u.doppler_optical(line_mean))
+    else:
+        velocity = line_mean.to(u.km/u.s)
+        veldisp = line_sigma.to(u.km/u.s)
+    
+    line_params['int_flux'] = int_flux
+    line_params['velocity'] = velocity
+    line_params['veldisp'] = veldisp
+    
+    return int_flux, velocity, veldisp
