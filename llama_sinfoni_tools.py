@@ -9,9 +9,11 @@ import numpy as np
 import astropy.units as u
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
+from astropy.stats import sigma_clipped_stats
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
-
+import aplpy
+import matplotlib.pyplot as plt
 
 def read_data(fn):
     """
@@ -218,4 +220,63 @@ def calc_line_params(fit_params, line_center):
     return line_params
 
 
-def plot_line_params(
+def plot_line_params(line_params, header):
+    """
+    Function to plot the line intensity, velocity, and velocity dispersion in one figure
+    """
+    
+    int_flux_hdu = fits.PrimaryHDU()
+    velocity_hdu = fits.PrimaryHDU()
+    veldisp_hdu = fits.PrimaryHDU()
+    
+    header['WCSAXES'] = 2
+    header['NAXIS'] = 2
+    header.remove('CDELT3')
+    header.remove('CRVAL3')
+    header.remove('CUNIT3')
+    header.remove('CRPIX3')
+    header.remove('CTYPE3')
+    
+    int_flux_hdu.header = header
+    velocity_hdu.header = header
+    veldisp_hdu.header = header
+    
+    int_flux_hdu.data = line_params['int_flux'].value
+    velocity_hdu.data = line_params['velocity'].value
+    veldisp_hdu.data = line_params['veldisp'].value
+    
+    fig = plt.figure(figsize=(18,6))
+    
+    ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
+    ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
+    ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
+    
+    int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value)
+    vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value)
+    vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value)
+    
+    ax_int.show_colorscale(cmap='cubehelix', vmin=int_med-2*int_sig, vmax=int_med+2*int_sig)
+    ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_med-2*vel_sig, vmax=vel_med+2*vel_sig)
+    ax_vdp.show_colorscale(cmap='Spectral', vmin=vdp_med-2*vdp_sig, vmax=vdp_med+2*vdp_sig)
+    
+    ax_int.show_colorbar()
+    ax_vel.show_colorbar()
+    ax_vdp.show_colorbar()
+    
+    ax_int.colorbar.set_axis_label_text(r'Flux 10$^{-17}$ [W m$^{-2}$]')
+    ax_vel.colorbar.set_axis_label_text(r'Velocity [km s$^{-1}$]')
+    ax_vdp.colorbar.set_axis_label_text(r'$\sigma_{\rm v}$ [km s$^{-1}$]')
+    
+    ax_int.set_axis_labels_ydisp(-30)
+    ax_vel.hide_yaxis_label()
+    ax_vel.hide_ytick_labels()
+    ax_vdp.hide_yaxis_label()
+    ax_vdp.hide_ytick_labels()
+    
+    fig.subplots_adjust(wspace=0.3)
+    
+    return fig, [ax_int, ax_vel, ax_vdp]
+    
+    
+    
+    
