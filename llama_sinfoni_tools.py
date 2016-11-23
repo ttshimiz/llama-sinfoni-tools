@@ -53,11 +53,10 @@ def read_data(fn):
     if wcs.wcs.cd[2, 2] != cdelt3:
         wcs.wcs.cd[2, 2] = cdelt3
 
-    cube = SpectralCube(data=data, wcs=wcs, read_beam=False)
+    cube = SpectralCube(data=data, wcs=wcs, read_beam=False, meta={'BUNIT':'W / (m2 micron)'})
 
-    # Convert to microns and add flux units
+    # Convert to microns
     cube = cube.with_spectral_unit(u.micron)
-    cube._unit = u.W/u.meter**2/u.micron
 
     return cube
     
@@ -116,7 +115,9 @@ def remove_cont(cube, degree=1, exclude=None):
 				fit_params[i, j, :] = np.nan
 				data_cont_remove[:, i, j] = np.nan
     
-    cube_cont_remove = SpectralCube(data=data_cont_remove, wcs=cube.wcs)
+    cube_cont_remove = SpectralCube(data=data_cont_remove, wcs=cube.wcs,
+                                    meta={'BUNIT':cube.unit.to_string()})
+    cube_cont_remove = cube_cont_remove.with_spectral_unit(cube.spectral_axis.unit)
     
     return cube_cont_remove, fit_params
     
@@ -155,9 +156,13 @@ def cubefit_gauss(cube, guess=None, exclude=None):
     
     xsize = cube.shape[1]
     ysize = cube.shape[2]
-    nparams = 3
-    fit_params = np.zeros((xsize, ysize, nparams))
+    flux_unit = cube.unit
     spec_ax = cube.spectral_axis.value
+    spec_ax_unit = cube.spectral_axis.unit
+    
+    fit_params = {'amplitude': np.zeros((xsize, ysize))*flux_unit,
+                  'mean': np.zeros((xsize, ysize))*spec_ax_unit,
+                  'sigma': np.zeros((xsize, ysize))*spec_ax_unit}
     
     for i in range(xsize):
         for j in range(ysize):
@@ -167,10 +172,12 @@ def cubefit_gauss(cube, guess=None, exclude=None):
             if np.any(~np.isnan(spec)):
                 gauss_mod = gauss_fit_single(spec_ax, spec, guess=guess, exclude=exclude)
             
-                for n in range(nparams):
-                    fit_params[i, j, n] = gauss_mod.parameters[n]
+                fit_params['amplitude'][i, j] = gauss_mod.amplitude.value*flux_unit
+                fit_params['mean'][i, j] = gauss_mod.mean.value*spec_ax_unit
+                fit_params['sigma'][i, j] = gauss_mod.stddev.value*spec_ax_unit
                 
             else:
-				fit_params[i, j, :] = np.nan
+				fit_params['amplitude'][i, j] = np.nan
+				fit_params['mean'][i, j] = np.nan
+				fit_params['sigma'][i, j] = np.nan
         
-    return fit_params    
