@@ -215,4 +215,7 @@ def calc_line_params(fit_params, line_center):
     line_params['velocity'] = velocity
     line_params['veldisp'] = veldisp
     
-    return int_flux, velocity, veldisp
+    return line_params
+
+
+def plot_line_params(
