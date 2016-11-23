@@ -253,7 +253,7 @@ def plot_line_params(line_params, header):
     ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
     
     int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value, iters=100)
-    vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value, iters=100)
+    vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
     
     ax_int.show_colorscale(cmap='cubehelix')
@@ -264,7 +264,7 @@ def plot_line_params(line_params, header):
     ax_vel.show_colorbar()
     ax_vdp.show_colorbar()
     
-    ax_int.colorbar.set_axis_label_text(r'Flux 10$^{-17}$ [W m$^{-2}$]')
+    ax_int.colorbar.set_axis_label_text(r'Flux [W m$^{-2}$]')
     ax_vel.colorbar.set_axis_label_text(r'Velocity [km s$^{-1}$]')
     ax_vdp.colorbar.set_axis_label_text(r'$\sigma_{\rm v}$ [km s$^{-1}$]')
     
