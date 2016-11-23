@@ -278,5 +278,36 @@ def plot_line_params(line_params, header):
     return fig, [ax_int, ax_vel, ax_vdp]
     
     
+def run_line(cube, line_name, velrange =[-4000, 4000],
+              zz=0, plot_results=True):
     
+    # Get the rest wavelength          
+    line_center = lines.EMISSION_LINES[line_name]*(1+zz)   
+    
+    # Slice the cube
+    slice = cube.with_spectral_unit(unit=u.km/u.s, velocity_convention='optical',
+                                    rest_value=line_center).spectral_slab(velrange[0]*u.km/u.s, velrange[1]*u.km/u.s) 
+    slice = slice.with_spectral_unit(unit=u.micron, velocity_convention='optical',
+                                     rest_value=line_center)
+    
+    # Subtract out the continuum
+    cube_cont_remove, cont_params = remove_cont(slice)
+    
+    # Fit a Gaussian to the line
+    gaussfit_params = cubefit_gauss(cube_cont_remove)
+    
+    # Calculate the line parameters
+    line_params = calc_line_params(gaussfit_params, line_center)
+    
+    results = {'line_params': line_params,
+               'continuum_sub': cube_cont_remove,
+               'gauss_params': gaussfit_params,
+               'data': slice}
+    
+    if plot_results:
+        fig, axes = plot_line_params(line_params, slice.header)
+        results['results_fig'] = fig
+        results['results_axes'] = axes
+    
+    return results
     
