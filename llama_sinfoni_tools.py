@@ -14,6 +14,7 @@ from astropy.wcs import WCS
 from spectral_cube import SpectralCube
 import aplpy
 import matplotlib.pyplot as plt
+import lines
 
 def read_data(fn):
     """
@@ -174,7 +175,7 @@ def cubefit_gauss(cube, guess=None, exclude=None):
             if np.any(~np.isnan(spec)):
                 gauss_mod = gauss_fit_single(spec_ax, spec, guess=guess, exclude=exclude)
             
-                fit_params['amplitude'][i, j] = gauss_mod.amplitude.value*flux_unit
+                fit_params['amplitude'][i, j] = gauss_mod.amplitude.value*flux_unit*10**(-17)
                 fit_params['mean'][i, j] = gauss_mod.mean.value*spec_ax_unit
                 fit_params['sigma'][i, j] = gauss_mod.stddev.value*spec_ax_unit
                 
@@ -251,11 +252,11 @@ def plot_line_params(line_params, header):
     ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
     ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
     
-    int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value)
-    vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value)
-    vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value)
+    int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value, iters=100)
+    vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value, iters=100)
+    vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
     
-    ax_int.show_colorscale(cmap='cubehelix', vmin=int_med-2*int_sig, vmax=int_med+2*int_sig)
+    ax_int.show_colorscale(cmap='cubehelix')
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_med-2*vel_sig, vmax=vel_med+2*vel_sig)
     ax_vdp.show_colorscale(cmap='Spectral', vmin=vdp_med-2*vdp_sig, vmax=vdp_med+2*vdp_sig)
     
