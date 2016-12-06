@@ -84,7 +84,8 @@ def cont_fit_single(x, spectrum, degree=1, errors=None, exclude=None):
     cont.c0 = y1 - cont.c1*x1
     
     fitter = apy_mod.fitting.LevMarLSQFitter()
-    cont_fit = fitter(cont, x, spectrum, weights=1./errors)
+    #cont_fit = fitter(cont, x, spectrum, weights=1./errors)
+    cont_fit = fitter(cont, x, spectrum)
     
     return cont_fit
     
@@ -115,8 +116,8 @@ def remove_cont(cube, degree=1, exclude=None):
                 data_cont_remove[:, i, j] = (spec - cont(spec_ax))*10**(-17)
 
             else:
-				fit_params[i, j, :] = np.nan
-				data_cont_remove[:, i, j] = np.nan
+                fit_params[i, j, :] = np.nan
+                data_cont_remove[:, i, j] = np.nan
     
     cube_cont_remove = SpectralCube(data=data_cont_remove, wcs=cube.wcs,
                                     meta={'BUNIT':cube.unit.to_string()})
@@ -125,7 +126,8 @@ def remove_cont(cube, degree=1, exclude=None):
     return cube_cont_remove, fit_params
     
     
-def gauss_fit_single(x, spectrum, guess=None, errors=None, exclude=None):
+def gauss_fit_single(x, spectrum, rms_est=None, sn_thresh=None,
+                     guess=None, errors=None, exclude=None):
     """
     Function to fit a single spectrum with a Gaussian
     """
@@ -146,15 +148,25 @@ def gauss_fit_single(x, spectrum, guess=None, errors=None, exclude=None):
         model.mean = guess[1]
         model.stddev = guess[2]
     
-    
-    fitter = apy_mod.fitting.LevMarLSQFitter()     
-    gauss_fit = fitter(model, x, spectrum, weights=1./errors)
+    if ((rms_est is not None) & (sn_thresh is not None)):
+        sn_est = model.amplitude/rms_est
+        if sn_est > sn_thresh:    
+            fitter = apy_mod.fitting.LevMarLSQFitter()     
+            gauss_fit = fitter(model, x, spectrum, weights=1./errors)
+        else:
+            gauss_fit = None
+    else:
+        fitter = apy_mod.fitting.LevMarLSQFitter()     
+        gauss_fit = fitter(model, x, spectrum, weights=1./errors)
     
     return gauss_fit
         
-def cubefit_gauss(cube, guess=None, exclude=None):
+def cubefit_gauss(cube, local_rms=None, sn_thresh=None, guess=None, exclude=None):
     """
-    Function to loop through all of the spectra in a cube and fit a gaussian
+    Function to loop through all of the spectra in a cube and fit a gaussian.
+    If an estimate of the local rms and a signal-to-noise threshold is given
+    then only fit a line above the signal-to-noise threshold determined by
+    the ratio of the local rms and the peak value in the spectrum.
     """
     
     xsize = cube.shape[1]
@@ -171,27 +183,60 @@ def cubefit_gauss(cube, guess=None, exclude=None):
         for j in range(ysize):
             
             spec = cube[:, i, j].value/10**(-17)
+            if local_rms is not None:
+                rms_est = local_rms[i, j].value/10**(-17)
+            else:
+                rms_est = None
             
             if np.any(~np.isnan(spec)):
-                gauss_mod = gauss_fit_single(spec_ax, spec, guess=guess, exclude=exclude)
-            
-                fit_params['amplitude'][i, j] = gauss_mod.amplitude.value*flux_unit*10**(-17)
-                fit_params['mean'][i, j] = gauss_mod.mean.value*spec_ax_unit
-                fit_params['sigma'][i, j] = gauss_mod.stddev.value*spec_ax_unit
-                
+                gauss_mod = gauss_fit_single(spec_ax, spec, rms_est=rms_est,
+                                             sn_thresh=sn_thresh,guess=guess,
+                                             exclude=exclude)
+                if gauss_mod is not None:
+                    fit_params['amplitude'][i, j] = gauss_mod.amplitude.value*flux_unit*10**(-17)
+                    fit_params['mean'][i, j] = gauss_mod.mean.value*spec_ax_unit
+                    fit_params['sigma'][i, j] = gauss_mod.stddev.value*spec_ax_unit
+                else:
+                    fit_params['amplitude'][i, j] = np.nan
+                    fit_params['mean'][i, j] = np.nan
+                    fit_params['sigma'][i, j] = np.nan
             else:
-				fit_params['amplitude'][i, j] = np.nan
-				fit_params['mean'][i, j] = np.nan
-				fit_params['sigma'][i, j] = np.nan
+                fit_params['amplitude'][i, j] = np.nan
+                fit_params['mean'][i, j] = np.nan
+                fit_params['sigma'][i, j] = np.nan
         
     return fit_params 
     
 
-def calc_line_params(fit_params, line_center):
+def calc_local_rms(cube, line_center, region=0.05*u.micron):
+    """
+    Function to calculate the local rms of the spectrum around the line.
+    Assumes the continuum has been subtracted already. 
+    Excludes the region around the line center +/- 'region'
+    """
+    
+    xsize = cube.shape[1]
+    ysize = cube.shape[2]
+    flux_unit = cube.unit
+    spec_ax = cube.spectral_axis
+    ind_use = ((spec_ax < (line_center+region)) & (spec_ax > (line_center-region)))
+    local_rms = np.zeros((xsize, ysize))*flux_unit
+    
+    for i in range(xsize):
+        for j in range(ysize):
+        
+            spec = cube[:, i, j].value
+            local_rms[i, j] = np.std(spec[ind_use])*flux_unit
+    
+    return local_rms
+    
+
+def calc_line_params(fit_params, line_center, local_rms):
     """
     Function to determine the integrated line flux, velocity, and linewidth
     Assumes the units on the amplitude are W/m^2/micron and the units on the
     mean and sigma are micron as well.
+    Also determines the S/N of the line using the local rms of the spectrum.
     """
     
     amp = fit_params['amplitude']
@@ -202,7 +247,7 @@ def calc_line_params(fit_params, line_center):
     if line_mean.unit != u.micron:
         print('Warning: Units on the line mean and sigma are not in microns.'
               'Integrated line flux will not be correct.')
-
+    
     # Integrated flux is just a Gaussian integral from -inf to inf
     int_flux = np.sqrt(2*np.pi)*amp*np.abs(line_sigma)
     
@@ -258,7 +303,11 @@ def plot_line_params(line_params, header):
     
     ax_int.show_colorscale(cmap='cubehelix')
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_med-2*vel_sig, vmax=vel_med+2*vel_sig)
-    ax_vdp.show_colorscale(cmap='Spectral', vmin=vdp_med-2*vdp_sig, vmax=vdp_med+2*vdp_sig)
+    ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdp_med+2*vdp_sig)
+    
+    ax_int.set_nan_color('k')
+    ax_vel.set_nan_color('k')
+    ax_vdp.set_nan_color('k')
     
     ax_int.show_colorbar()
     ax_vel.show_colorbar()
@@ -278,9 +327,45 @@ def plot_line_params(line_params, header):
     
     return fig, [ax_int, ax_vel, ax_vdp]
     
+
+def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
+                          line1_name=None, line2_name=None):
+    """
+    Function to create a line ratio map. Map will be line1/line2.
+    """
     
+    lr_hdu = fits.PrimaryHDU()
+    
+    header['WCSAXES'] = 2
+    header['NAXIS'] = 2
+    header.remove('CDELT3')
+    header.remove('CRVAL3')
+    header.remove('CUNIT3')
+    header.remove('CRPIX3')
+    header.remove('CTYPE3')
+    
+    lr_hdu.header = header
+    
+    lr_hdu.data = line1/line2
+    
+    lr_fig = aplpy.FITSFigure(lr_hdu)
+    lr_mn, lr_med, lr_sig = sigma_clipped_stats(line1/line2, iters=100)
+    
+    lr_fig.show_colorscale(cmap=cmap, vmin=0.0, vmax=lr_med+2*lr_sig)
+    
+    lr_fig.show_colorbar()
+    
+    if ((line1_name is not None) & (line2_name is not None)):
+        
+        lr_fig.colorbar.set_axis_label_text(line1_name+'/'+line2_name)
+    
+    lr_fig.set_axis_labels_ydisp(-30)
+    
+    return lr_fig
+
+        
 def run_line(cube, line_name, velrange =[-4000, 4000],
-              zz=0, plot_results=True):
+             zz=0, plot_results=True, sn_thresh=3.0):
     
     # Get the rest wavelength          
     line_center = lines.EMISSION_LINES[line_name]*(1+zz)   
@@ -294,11 +379,14 @@ def run_line(cube, line_name, velrange =[-4000, 4000],
     # Subtract out the continuum
     cube_cont_remove, cont_params = remove_cont(slice)
     
+    # Determine the RMS around the line
+    local_rms = calc_local_rms(cube_cont_remove, line_center)
+    
     # Fit a Gaussian to the line
-    gaussfit_params = cubefit_gauss(cube_cont_remove)
+    gaussfit_params = cubefit_gauss(cube_cont_remove, local_rms=local_rms, sn_thresh=sn_thresh)
     
     # Calculate the line parameters
-    line_params = calc_line_params(gaussfit_params, line_center)
+    line_params = calc_line_params(gaussfit_params, line_center, local_rms)
     
     results = {'line_params': line_params,
                'continuum_sub': cube_cont_remove,
