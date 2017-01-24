@@ -18,7 +18,7 @@ CO absorption lines from http://www.gemini.edu/sciops/instruments/nir/wavecal/co
 import astropy.units as u
 
 EMISSION_LINES = {'H2 (1-0) S(0)': 2.223*u.micron,
-                  'H2 (1-0) S(1)': 2.121*u.micron,
+                  'H2 (1-0) S(1)': 2.1218*u.micron,
                   'H2 (1-0) S(2)': 2.033*u.micron,
                   'H2 (2-1) S(1)': 2.247*u.micron,
                   'H2 (2-1) S(3)': 2.073*u.micron,
