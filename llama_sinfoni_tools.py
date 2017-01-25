@@ -72,6 +72,11 @@ def cont_fit_single(x, spectrum, degree=1, errors=None, exclude=None):
     if errors is None:
         errors = np.ones(len(spectrum))
 
+    if exclude is not None:
+        x = x[~exclude]
+        spectrum = spectrum[~exclude]
+        errors = errors[~exclude]
+
     cont = apy_mod.models.Polynomial1D(degree=degree)
 
     # Use the endpoints of the spectrum to guess at zeroth and first order
@@ -341,19 +346,22 @@ def calc_local_rms(cube, line_center, exclude=None):
     ysize = cube.shape[2]
     flux_unit = cube.unit
     spec_ax = cube.spectral_axis
-    ind_use = ((spec_ax < (line_center+region)) & (spec_ax > (line_center-region)))
+    #ind_use = ((spec_ax < (line_center+region)) & (spec_ax > (line_center-region)))
     local_rms = np.zeros((xsize, ysize))*flux_unit
 
     for i in range(xsize):
         for j in range(ysize):
 
             spec = cube[:, i, j].value
-            local_rms[i, j] = np.std(spec[ind_use])*flux_unit
+            if exclude is not None:
+                local_rms[i, j] = np.std(spec[~exclude])*flux_unit
+            else:
+                local_rms[i, j] = np.std(spec)*flux_unit
 
     return local_rms
 
 
-def calc_line_params(fit_params, line_center, local_rms, inst_broad=0):
+def calc_line_params(fit_params, line_center, local_rms=None, inst_broad=0):
     """
     Function to determine the integrated line flux, velocity, and linewidth
     Assumes the units on the amplitude are W/m^2/micron and the units on the
