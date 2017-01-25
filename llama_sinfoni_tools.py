@@ -394,7 +394,7 @@ def calc_line_params(fit_params, line_center, local_rms=None, inst_broad=0):
 
     # Subtract off instrumental broadening
     phys_veldisp = np.sqrt(veldisp**2 - inst_broad**2)
-    phys_veldisp[veldisp < inst_broad] = 0
+    phys_veldisp[veldisp < inst_broad] = np.nan
 
     line_params['veldisp'] = phys_veldisp
 
