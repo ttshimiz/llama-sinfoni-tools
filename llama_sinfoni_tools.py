@@ -361,7 +361,7 @@ def calc_local_rms(cube, line_center, exclude=None):
     return local_rms
 
 
-def calc_line_params(fit_params, line_center, local_rms=None, inst_broad=0):
+def calc_line_params(fit_params, line_center, inst_broad=0):
     """
     Function to determine the integrated line flux, velocity, and linewidth
     Assumes the units on the amplitude are W/m^2/micron and the units on the
@@ -579,6 +579,7 @@ def cubefit(cube, model, skip=None, exclude=None):
     xsize = cube.shape[1]
     ysize = cube.shape[2]
     flux_unit = cube.unit
+    spec_ax = cube.spectral_axis
     spec_ax_unit = cube.spectral_axis.unit
 
     fit_params = {}
@@ -600,16 +601,11 @@ def cubefit(cube, model, skip=None, exclude=None):
     for i in range(xsize):
         for j in range(ysize):
 
-            spec = cube[:, i, j]/10**(-17)
-
-            if local_rms is not None:
-                rms_est = local_rms[i, j]/10**(-17)
-            else:
-                rms_est = None
+            spec = cube[:, i, j].value/10**(-17)
 
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
-                fit_result = specfit(spec, model, exclude=exclude)
+                fit_result = specfit(spec_ax.to(u.micron).value, spec, model, exclude=exclude)
 
                 if hasattr(model, 'submodel_names'):
                     for n in model.submodel_names:
@@ -625,16 +621,13 @@ def cubefit(cube, model, skip=None, exclude=None):
     return fit_params
 
 
-def specfit(spec, model, errors=None, exclude=None):
+def specfit(x, fx, model, errors=None, exclude=None):
     """
     Function to fit a single spectrum with a model
     """
 
-    x = spec.spectral_axis.to(u.micron).value
-    fx = spec.value
-
     if errors is None:
-        errors = np.ones(len(spec))
+        errors = np.ones(len(fx))
     if exclude is not None:
         x = x[~exclude]
         fx = fx[~exclude]
