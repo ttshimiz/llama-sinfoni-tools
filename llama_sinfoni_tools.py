@@ -361,7 +361,7 @@ def calc_local_rms(cube, line_center, exclude=None):
     return local_rms
 
 
-def calc_line_params(fit_params, line_center, inst_broad=0):
+def calc_line_params(fit_params, line_centers, inst_broad=0):
     """
     Function to determine the integrated line flux, velocity, and linewidth
     Assumes the units on the amplitude are W/m^2/micron and the units on the
@@ -369,34 +369,39 @@ def calc_line_params(fit_params, line_center, inst_broad=0):
     Also determines the S/N of the line using the local rms of the spectrum.
     """
 
-    amp = fit_params['amplitude']
-    line_mean = fit_params['mean']
-    line_sigma = fit_params['sigma']
     line_params = {}
 
-    if line_mean.unit != u.micron:
-        print('Warning: Units on the line mean and sigma are not in microns.'
-              'Integrated line flux will not be correct.')
+    for k in fit_params.keys():
 
-    # Integrated flux is just a Gaussian integral from -inf to inf
-    int_flux = np.sqrt(2*np.pi)*amp*np.abs(line_sigma)
+        lc = line_centers[k]
+        line_params[k] = {}
+        amp = fit_params[k]['amplitude']
+        line_mean = fit_params[k]['mean']
+        line_sigma = fit_params[k]['sigma']
 
-    # Convert the line mean and line sigma to km/s if not already
-    if line_mean.unit.physical_type != 'speed':
-        velocity = line_mean.to(u.km/u.s, equivalencies=u.doppler_optical(line_center))
-        veldisp = (line_mean+line_sigma).to(u.km/u.s, equivalencies=u.doppler_optical(line_mean))
-    else:
-        velocity = line_mean.to(u.km/u.s)
-        veldisp = line_sigma.to(u.km/u.s)
+        if line_mean.unit != u.micron:
+            print('Warning: Units on the line mean and sigma are not in microns.'
+                  'Integrated line flux will not be correct.')
 
-    line_params['int_flux'] = int_flux
-    line_params['velocity'] = velocity
+        # Integrated flux is just a Gaussian integral from -inf to inf
+        int_flux = np.sqrt(2*np.pi)*amp*np.abs(line_sigma)
 
-    # Subtract off instrumental broadening
-    phys_veldisp = np.sqrt(veldisp**2 - inst_broad**2)
-    phys_veldisp[veldisp < inst_broad] = np.nan
+        # Convert the line mean and line sigma to km/s if not already
+        if line_mean.unit.physical_type != 'speed':
+            velocity = line_mean.to(u.km/u.s, equivalencies=u.doppler_optical(lc))
+            veldisp = (line_mean+line_sigma).to(u.km/u.s, equivalencies=u.doppler_optical(line_mean))
+        else:
+            velocity = line_mean.to(u.km/u.s)
+            veldisp = line_sigma.to(u.km/u.s)
 
-    line_params['veldisp'] = phys_veldisp
+        line_params[k]['int_flux'] = int_flux
+        line_params[k]['velocity'] = velocity
+
+        # Subtract off instrumental broadening
+        phys_veldisp = np.sqrt(veldisp**2 - inst_broad**2)
+        phys_veldisp[veldisp < inst_broad] = np.nan
+
+        line_params[k]['veldisp'] = phys_veldisp
 
     return line_params
 
