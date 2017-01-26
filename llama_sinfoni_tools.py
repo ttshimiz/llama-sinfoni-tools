@@ -533,6 +533,38 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         width_guess = np.ones(nlines)*100.*u.km/u.s
         width_guess[broad] = 1000.*u.km/u.s
 
+    # Loop through each line and create a model
+    mods = []
+    for i,l in enumerate(line_names):
+
+        if broad[i]:
+            lreal = l.split()[0:-1]
+        else:
+            lreal = l
+
+        # Look up the rest wavelength
+        line_center = lines.EMISSION_LINES[lreal]
+
+        # Create a doppler conversion using the optical convention
+        opt_conv = u.doppler_optical(line_center)
+
+
+        # Convert the guesses for the line center and width to micron
+        center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
+        if u.get_physical_type(width_guess) == 'speed':
+            width_guess_i = width_guess[i].to(u.micron, equivalencies=opt_conv) - center_guess_i
+        elif u.get_physical_type(width_guess) == 'length':
+            width_guess_i = width_guess[i].to(u.micron)
+        center_guess_i = center_guess_i.value
+        width_guess_i = width_guess_i.value
+
+        # Create the single Gaussian line model for the emission line
+        mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[i],
+                                               stddev=width_guess_i, name=l)
+
+        # Add to the model list
+        mods.append(mod_single)
+
 
 
 def run_line(cube, line_name, velrange =[-4000, 4000],
