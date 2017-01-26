@@ -571,6 +571,80 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
 
     return final_model
 
+def cubefit(cube, model, skip=None, exclude=None):
+    """
+    Function to loop through all of the spectra in a cube and fit a model.
+    """
+
+    xsize = cube.shape[1]
+    ysize = cube.shape[2]
+    flux_unit = cube.unit
+    spec_ax_unit = cube.spectral_axis.unit
+
+    fit_params = {}
+    if hasattr(model, 'submodel_names'):
+
+        for n in model.submodel_names:
+            fit_params[n] = {'amplitude': np.zeros((xsize, ysize))*flux_unit*np.nan,
+                             'mean': np.zeros((xsize, ysize))*spec_ax_unit*np.nan,
+                             'sigma': np.zeros((xsize, ysize))*spec_ax_unit*np.nan}
+
+    else:
+        fit_params[model.name] = {'amplitude': np.zeros((xsize, ysize))*flux_unit*np.nan,
+                                  'mean': np.zeros((xsize, ysize))*spec_ax_unit*np.nan,
+                                  'sigma': np.zeros((xsize, ysize))*spec_ax_unit*np.nan}
+
+    if skip is None:
+        skip = np.zeros((xsize, ysize), dtype=np.bool)
+
+    for i in range(xsize):
+        for j in range(ysize):
+
+            spec = cube[:, i, j]/10**(-17)
+
+            if local_rms is not None:
+                rms_est = local_rms[i, j]/10**(-17)
+            else:
+                rms_est = None
+
+            if (np.any(~np.isnan(spec)) & ~skip[i, j]):
+
+                fit_result = specfit(spec, model, exclude=exclude)
+
+                if hasattr(model, 'submodel_names'):
+                    for n in model.submodel_names:
+                        fit_params[n]['amplitude'][i,j] = fit_result[n].amplitude.value*flux_unit*10**(-17)
+                        fit_params[n]['mean'][i,j] = fit_result[n].mean.value*spec_ax_unit
+                        fit_params[n]['sigma'][i,j] = fit_result[n].stddev.value*spec_ax_unit
+                else:
+                    fit_params[model.name]['amplitude'][i,j] = fit_result.amplitude.value*flux_unit*10**(-17)
+                    fit_params[model.name]['mean'][i,j] = fit_result.mean.value*spec_ax_unit
+                    fit_params[model.name]['sigma'][i,j] = fit_result.stddev.value*spec_ax_unit
+
+
+    return fit_params
+
+
+def specfit(spec, model, errors=None, exclude=None):
+    """
+    Function to fit a single spectrum with a model
+    """
+
+    x = spec.spectral_axis.to(u.micron).value
+    fx = spec.value
+
+    if errors is None:
+        errors = np.ones(len(spec))
+    if exclude is not None:
+        x = x[~exclude]
+        fx = fx[~exclude]
+        errors = errors[~exclude]
+
+    fitter = apy_mod.fitting.LevMarLSQFitter()
+    bestfit = fitter(model, x, fx, weights=1./errors)
+
+    return bestfit
+
 
 def run_line(cube, line_name, velrange =[-4000, 4000],
              zz=0, inst_broad=0., plot_results=True, sn_thresh=3.0):
