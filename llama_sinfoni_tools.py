@@ -499,6 +499,42 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
     return lr_fig
 
 
+def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None):
+    """
+    Function that allows for the creation of a generic model for a spectral region.
+    Each line specified in 'line_names' must be included in the file 'lines.py'.
+    Defaults for the amplitude guesses will be 1.0 for all lines.
+    Defaults for the center guesses will be the observed wavelengths.
+    Defaults for the line widths will be 100 km/s for narrow lines and 1000 km/s for the
+    broad lines.
+    All lines are considered narrow unless the name has 'broad' attached to the end of the name.
+    """
+
+    # Line_names can be a single string. If so convert it to a list
+    nlines = len(line_names)
+    if nlines == 1:
+        line_names = [line_names]
+
+    # Determine which of the lines are broad
+    broad = np.zeros(nlines, dtype=np.bool)
+    for i,l in enumerate(line_names):
+        name_split = l.split()
+        if name_split[-1] == 'broad':
+            broad[i] = True
+
+    # Create the default amplitude guesses for the lines if necessary
+    if amp_guess is None:
+        amp_guess = np.ones(nlines)
+
+    # Create arrays to hold the default line center and width guesses
+    if center_guess is None:
+        center_guess = np.zeros(nlines)*u.km/u.s
+    if width_guess is None:
+        width_guess = np.ones(nlines)*100.*u.km/u.s
+        width_guess[broad] = 1000.*u.km/u.s
+
+
+
 def run_line(cube, line_name, velrange =[-4000, 4000],
              zz=0, inst_broad=0., plot_results=True, sn_thresh=3.0):
 
