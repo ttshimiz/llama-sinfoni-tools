@@ -563,6 +563,9 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[i],
                                                stddev=width_guess_i, name=l)
 
+        mod_single.amplitude.min = 0
+        mod_single.stddev.min = 0
+
         # Add to the model list
         mods.append(mod_single)
 
