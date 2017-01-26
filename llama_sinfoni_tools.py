@@ -545,15 +545,11 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         # Look up the rest wavelength
         line_center = lines.EMISSION_LINES[lreal]
 
-        # Create a doppler conversion using the optical convention
-        opt_conv = u.doppler_optical(line_center)
-
-
         # Convert the guesses for the line center and width to micron
-        center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
-        if u.get_physical_type(width_guess) == 'speed':
-            width_guess_i = width_guess[i].to(u.micron, equivalencies=opt_conv) - center_guess_i
-        elif u.get_physical_type(width_guess) == 'length':
+        center_guess_i = center_guess[i].to(u.micron, equivalencies=u.doppler_optical(line_center))
+        if u.get_physical_type(width_guess.unit) == 'speed':
+            width_guess_i = width_guess[i].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
+        elif u.get_physical_type(width_guess.unit) == 'length':
             width_guess_i = width_guess[i].to(u.micron)
         center_guess_i = center_guess_i.value
         width_guess_i = width_guess_i.value
@@ -565,6 +561,15 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         # Add to the model list
         mods.append(mod_single)
 
+    # Create the combined model by adding all of the models together
+    if nlines == 1:
+        final_model = mods[0]
+    else:
+        final_model = mods[0]
+        for m in mods[1:]:
+            final_model += m
+
+    return final_model
 
 
 def run_line(cube, line_name, velrange =[-4000, 4000],
