@@ -538,7 +538,7 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
     for i,l in enumerate(line_names):
 
         if broad[i]:
-            lreal = l.split()[0:-1]
+            lreal = ' '.join(l.split()[0:-1])
         else:
             lreal = l
 
