@@ -504,7 +504,9 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
     return lr_fig
 
 
-def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None):
+def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None,
+                 center_limits=None, width_limits=None,
+                 center_fixed=None, width_fixed=None):
     """
     Function that allows for the creation of a generic model for a spectral region.
     Each line specified in 'line_names' must be included in the file 'lines.py'.
@@ -550,8 +552,11 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         # Look up the rest wavelength
         line_center = lines.EMISSION_LINES[lreal]
 
+        # Equivalency to convert to/from wavelength from/to velocity
+        opt_conv = u.doppler_optical(line_center)
+
         # Convert the guesses for the line center and width to micron
-        center_guess_i = center_guess[i].to(u.micron, equivalencies=u.doppler_optical(line_center))
+        center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
         if u.get_physical_type(width_guess.unit) == 'speed':
             width_guess_i = width_guess[i].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
         elif u.get_physical_type(width_guess.unit) == 'length':
@@ -563,8 +568,28 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[i],
                                                stddev=width_guess_i, name=l)
 
-        mod_single.amplitude.min = 0
-        mod_single.stddev.min = 0
+        # Set the constraints on the parameters if necessary
+        mod_single.amplitude.min = 0      # always an emission line
+
+        if center_limits is not None:
+            if center_limits[i][0] is not None:
+                mod_single.mean.min = center_limits[i][0].to(u.micron, equivalencies=opt_conv).value
+            if center_limits[i][1] is not None:
+                mod_single.mean.max = center_limits[i][1].to(u.micron, equivalencies=opt_conv).value
+
+        if width_limits is not None:
+            if width_limits[i][0] is not None:
+                mod_single.stddev.min = width_limits[i][0].to(u.micron, equivalencies=opt_conv).value - line_center.value
+            else:
+                mod_single.stddev.min = 0         # can't have negative width
+            if width_limits[i][1] is not None:
+                mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_center.value
+
+        # Set the fixed parameters
+        if center_fixed is not None:
+            mod_single.mean.fixed = center_fixed[i]
+        if width_fixed is not None:
+            mod_single.stddev.fixed = width_fixed[i]
 
         # Add to the model list
         mods.append(mod_single)
