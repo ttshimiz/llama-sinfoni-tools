@@ -131,7 +131,7 @@ def remove_cont(cube, degree=1, exclude=None):
     return cube_cont_remove, fit_params
 
 
-def calc_local_rms(cube, line_center, exclude=None):
+def calc_local_rms(cube, exclude=None):
     """
     Function to calculate the local rms of the spectrum around the line.
     Assumes the continuum has been subtracted already.
@@ -315,9 +315,9 @@ def create_model(line_names, amp_guess=None, z=0,
     """
 
     # Line_names can be a single string. If so convert it to a list
-    nlines = len(line_names)
-    if nlines == 1:
+    if type(line_names) == str:
         line_names = [line_names]
+    nlines = len(line_names)
 
     # Determine which of the lines are broad
     broad = np.zeros(nlines, dtype=np.bool)
@@ -484,38 +484,57 @@ def skip_pixels(cube, rms, sn_thresh=3.0):
     return skip
 
 
-def run_line(cube, line_name, velrange =[-4000, 4000],
-             zz=0, inst_broad=0., plot_results=True, sn_thresh=3.0):
-
-    # Get the rest wavelength
-    line_center = lines.EMISSION_LINES[line_name]*(1+zz)
-
-    # Slice the cube
-    slice = cube.with_spectral_unit(unit=u.km/u.s, velocity_convention='optical',
-                                    rest_value=line_center).spectral_slab(velrange[0]*u.km/u.s, velrange[1]*u.km/u.s)
-    slice = slice.with_spectral_unit(unit=u.micron, velocity_convention='optical',
-                                     rest_value=line_center)
+def runfit(cube, line_names, zz=0, inst_broad=0., sn_thresh=3.0,
+           cont_exclude=None, fit_exclude=None, amp_guess=None,
+           center_guess=None, width_guess=None, center_limits=None,
+           width_limits=None, center_fixed=None, width_fixed=None):
 
     # Subtract out the continuum
-    cube_cont_remove, cont_params = remove_cont(slice)
+    cube_cont_remove, cont_params = remove_cont(cube, exclude=cont_exclude)
 
     # Determine the RMS around the line
-    local_rms = calc_local_rms(cube_cont_remove, line_center)
+    local_rms = calc_local_rms(cube_cont_remove, exclude=cont_exclude)
 
-    # Fit a Gaussian to the line
-    gaussfit_params = cubefit_gauss(cube_cont_remove, local_rms=local_rms, sn_thresh=sn_thresh)
+    # Create a mask of pixels to skip in the fitting
+    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh)
+
+    # Create the model to fit
+    fitmod = create_model(line_names, z=zz, amp_guess=amp_guess, center_guess=center_guess,
+                          width_guess=width_guess, center_limits=center_limits,
+                          width_limits=width_limits, center_fixed=center_fixed, width_fixed=width_fixed)
+
+    fit_params = cubefit(cube_cont_remove, fitmod, skip=skippix, exclude=fit_exclude)
 
     # Calculate the line parameters
-    line_params = calc_line_params(gaussfit_params, line_center, local_rms, inst_broad=inst_broad)
+    # First need to get the line centers
+    lc = {}
+    if type(line_names) == str:
+
+        lsplit = line_names.split()
+
+        if lsplit[-1] == 'broad':
+            ln = ' '.join(lsplit[0:-1])
+        else:
+            ln = line_names
+        lc[line_names] =lines.EMISSION_LINES[ln]*(1+zz)
+
+    else:
+
+        for l in line_names:
+            lsplit = l.split()
+            if lsplit[-1] == 'broad':
+                ln = ' '.join(lsplit[0:-1])
+            else:
+                ln = l
+            lc[l] = lines.EMISSION_LINES[ln]*(1+zz)
+
+    line_params = calc_line_params(fit_params, lc, inst_broad=inst_broad)
 
     results = {'line_params': line_params,
                'continuum_sub': cube_cont_remove,
-               'gauss_params': gaussfit_params,
-               'data': slice}
-
-    if plot_results:
-        fig, axes = plot_line_params(line_params, slice.header)
-        results['results_fig'] = fig
-        results['results_axes'] = axes
+               'cont_params': cont_params,
+               'fit_params': fit_params,
+               'data': slice,
+               'fit_pixels': skippix}
 
     return results
