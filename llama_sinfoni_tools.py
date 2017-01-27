@@ -483,6 +483,22 @@ def skip_pixels(cube, rms, sn_thresh=3.0):
 
     return skip
 
+def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
+    """
+    Function to slice the cube and extract a specific spectral region
+    based on a user-defined central wavelength and velocity range.
+    """
+
+    # Slice first based on velocity
+    slice = cube.with_spectral_unit(unit=u.km/u.s, velocity_convention='optical',
+                                    rest_value=slice_center).spectral_slab(velrange[0], velrange[1])
+
+    # Convert back to wavelength
+    slice = slice.with_spectral_unit(unit=u.micron, velocity_convention='optical',
+                                     rest_value=slice_center)
+
+    return slice
+
 
 def runfit(cube, line_names, zz=0, inst_broad=0., sn_thresh=3.0,
            cont_exclude=None, fit_exclude=None, amp_guess=None,
