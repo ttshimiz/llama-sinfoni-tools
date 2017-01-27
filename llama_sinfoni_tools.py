@@ -469,6 +469,21 @@ def specfit(x, fx, model, errors=None, exclude=None):
     return bestfit
 
 
+def skip_pixels(cube, rms, sn_thresh=3.0):
+    """
+    Function to determine which pixels to skip based on a user defined S/N threshold.
+    Returns an NxM boolean array where True indicates a pixel to skip.
+    The signal used is the maximum value in the spectrum.
+    If the maximum value is a NaN then that pixel is also skipped.
+    """
+
+    spec_max = cube.max(axis=0)
+    sig_to_noise = spec_max/rms
+    skip = (sig_to_noise.value < sn_thresh) | (np.isnan(sig_to_noise.value))
+
+    return skip
+
+
 def run_line(cube, line_name, velrange =[-4000, 4000],
              zz=0, inst_broad=0., plot_results=True, sn_thresh=3.0):
 
