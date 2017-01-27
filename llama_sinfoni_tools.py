@@ -202,7 +202,8 @@ def calc_line_params(fit_params, line_centers, inst_broad=0):
     return line_params
 
 
-def plot_line_params(line_params, header):
+def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
+                     vdisp_max=300.):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -238,8 +239,8 @@ def plot_line_params(line_params, header):
     vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
     ax_int.show_colorscale(cmap='cubehelix', stretch='log', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
-    ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_med-2*vel_sig, vmax=vel_med+2*vel_sig)
-    ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdp_med+2*vdp_sig)
+    ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
+    ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdisp_max)
 
     ax_int.set_nan_color('k')
     ax_vel.set_nan_color('k')
