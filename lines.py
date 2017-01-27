@@ -10,8 +10,9 @@ in our SINFONI H+K data.
 All wavelengths are vacuum in microns.
 
 Molecular hydrogen lines from Wolfire & Koenig 1991.
-Atomic lines from http://www.pa.uky.edu/~peter/atomic/
+Atomic lines from Villar-Martin+15 and http://www.pa.uky.edu/~peter/atomic/
 CO absorption lines from http://www.gemini.edu/sciops/instruments/nir/wavecal/colines.dat
+
 
 """
 
@@ -19,20 +20,20 @@ import astropy.units as u
 
 EMISSION_LINES = {'H2 (1-0) S(0)': 2.22329*u.micron,
                   'H2 (1-0) S(1)': 2.12183*u.micron,
-                  'H2 (1-0) S(2)': 2.033*u.micron,
+                  'H2 (1-0) S(2)': 2.0338*u.micron,
                   'H2 (2-1) S(1)': 2.24771*u.micron,
                   'H2 (2-1) S(3)': 2.073*u.micron,
-                  'H2 (1-0) S(3)': 1.957*u.micron,
+                  'H2 (1-0) S(3)': 1.9576*u.micron,
                   'H2 (2-1) S(0)': 2.355*u.micron,
                   'H2 (2-1) S(2)': 2.154*u.micron,
                   'H2 (3-2) S(2)': 2.286*u.micron,
                   'H2 (3-2) S(3)': 2.201*u.micron,
-                  '[SiVI]': 1.965*u.micron,
+                  '[SiVI]': 1.9629*u.micron,
                   '[AlIX]': 2.04*u.micron,
                   '[CaVIII]': 2.3211*u.micron,
-                  '[SiXI]': 1.936*u.micron,
+                  '[SiXI]': 1.932*u.micron,
                   'Bry': 2.16612*u.micron,
-                  'HeI': 2.058*u.micron,
+                  'HeI': 2.0587*u.micron,
                   'Brd': 1.9451*u.micron,
                   'Paa': 1.8756*u.micron,
                   'Br11': 1.6811*u.micron,
