@@ -504,7 +504,8 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
     return lr_fig
 
 
-def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None,
+def create_model(line_names, amp_guess=None, z=0,
+                 center_guess=None, width_guess=None,
                  center_limits=None, width_limits=None,
                  center_fixed=None, width_fixed=None):
     """
@@ -549,8 +550,8 @@ def create_model(line_names, amp_guess=None, center_guess=None, width_guess=None
         else:
             lreal = l
 
-        # Look up the rest wavelength
-        line_center = lines.EMISSION_LINES[lreal]
+        # Look up the rest wavelength and convert to observed wavelength
+        line_center = lines.EMISSION_LINES[lreal]*(1+z)
 
         # Equivalency to convert to/from wavelength from/to velocity
         opt_conv = u.doppler_optical(line_center)
