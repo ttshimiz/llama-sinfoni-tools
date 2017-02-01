@@ -301,10 +301,10 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
     return lr_fig
 
 
-def create_model(line_names, amp_guess=None, z=0,
+def create_model(line_centers, amp_guess=None,
                  center_guess=None, width_guess=None,
                  center_limits=None, width_limits=None,
-                 center_fixed=None, width_fixed=None):
+                 center_fixed=None, width_fixed=None, line_names=None):
     """
     Function that allows for the creation of a generic model for a spectral region.
     Each line specified in 'line_names' must be included in the file 'lines.py'.
@@ -316,16 +316,9 @@ def create_model(line_names, amp_guess=None, z=0,
     """
 
     # Line_names can be a single string. If so convert it to a list
-    if type(line_names) == str:
-        line_names = [line_names]
-    nlines = len(line_names)
-
-    # Determine which of the lines are broad
-    broad = np.zeros(nlines, dtype=np.bool)
-    for i,l in enumerate(line_names):
-        name_split = l.split()
-        if name_split[-1] == 'broad':
-            broad[i] = True
+    if type(line_centers) == str:
+        line_names = [line_centers]
+    nlines = len(line_centers)
 
     # Create the default amplitude guesses for the lines if necessary
     if amp_guess is None:
@@ -336,22 +329,17 @@ def create_model(line_names, amp_guess=None, z=0,
         center_guess = np.zeros(nlines)*u.km/u.s
     if width_guess is None:
         width_guess = np.ones(nlines)*100.*u.km/u.s
-        width_guess[broad] = 1000.*u.km/u.s
+
+    # Create default line names
+    if line_names is None:
+        line_names = ['Line '+str(i+1) for i in range(nlines)]
 
     # Loop through each line and create a model
     mods = []
     for i,l in enumerate(line_names):
 
-        if broad[i]:
-            lreal = ' '.join(l.split()[0:-1])
-        else:
-            lreal = l
-
-        # Look up the rest wavelength and convert to observed wavelength
-        line_center = lines.EMISSION_LINES[lreal]*(1+z)
-
         # Equivalency to convert to/from wavelength from/to velocity
-        opt_conv = u.doppler_optical(line_center)
+        opt_conv = u.doppler_optical(line_centers[i])
 
         # Convert the guesses for the line center and width to micron
         center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
@@ -501,10 +489,7 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
     return slice
 
 
-def runfit(cube, line_names, zz=0, inst_broad=0., sn_thresh=3.0,
-           cont_exclude=None, fit_exclude=None, amp_guess=None,
-           center_guess=None, width_guess=None, center_limits=None,
-           width_limits=None, center_fixed=None, width_fixed=None):
+def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
 
     # Subtract out the continuum
     cube_cont_remove, cont_params = remove_cont(cube, exclude=cont_exclude)
@@ -515,43 +500,11 @@ def runfit(cube, line_names, zz=0, inst_broad=0., sn_thresh=3.0,
     # Create a mask of pixels to skip in the fitting
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh)
 
-    # Create the model to fit
-    fitmod = create_model(line_names, z=zz, amp_guess=amp_guess, center_guess=center_guess,
-                          width_guess=width_guess, center_limits=center_limits,
-                          width_limits=width_limits, center_fixed=center_fixed, width_fixed=width_fixed)
-
     fit_params = cubefit(cube_cont_remove, fitmod, skip=skippix, exclude=fit_exclude)
 
-    # Calculate the line parameters
-    # First need to get the line centers
-    lc = {}
-    if type(line_names) == str:
-
-        lsplit = line_names.split()
-
-        if lsplit[-1] == 'broad':
-            ln = ' '.join(lsplit[0:-1])
-        else:
-            ln = line_names
-        lc[line_names] =lines.EMISSION_LINES[ln]*(1+zz)
-
-    else:
-
-        for l in line_names:
-            lsplit = l.split()
-            if lsplit[-1] == 'broad':
-                ln = ' '.join(lsplit[0:-1])
-            else:
-                ln = l
-            lc[l] = lines.EMISSION_LINES[ln]*(1+zz)
-
-    line_params = calc_line_params(fit_params, lc, inst_broad=inst_broad)
-
-    results = {'line_params': line_params,
-               'continuum_sub': cube_cont_remove,
+    results = {'continuum_sub': cube_cont_remove,
                'cont_params': cont_params,
                'fit_params': fit_params,
-               'data': slice,
                'fit_pixels': skippix}
 
     return results
