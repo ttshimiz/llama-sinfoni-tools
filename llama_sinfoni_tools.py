@@ -317,7 +317,7 @@ def create_model(line_centers, amp_guess=None,
 
     # Line_names can be a single string. If so convert it to a list
     if type(line_centers) == str:
-        line_names = [line_centers]
+        line_centers = [line_centers]
     nlines = len(line_centers)
 
     # Create the default amplitude guesses for the lines if necessary
@@ -400,8 +400,10 @@ def cubefit(cube, model, skip=None, exclude=None):
     flux_unit = cube.unit
     spec_ax = cube.spectral_axis
     spec_ax_unit = cube.spectral_axis.unit
+    residuals = np.zeros(cube.shape)
 
     fit_params = {}
+
     if hasattr(model, 'submodel_names'):
 
         for n in model.submodel_names:
@@ -436,8 +438,13 @@ def cubefit(cube, model, skip=None, exclude=None):
                     fit_params[model.name]['mean'][i,j] = fit_result.mean.value*spec_ax_unit
                     fit_params[model.name]['sigma'][i,j] = fit_result.stddev.value*spec_ax_unit
 
+                residuals[:,i,j] = (spec - fit_result(spec_ax.to(u.micron).value))*10**(-17)
 
-    return fit_params
+    resid_cube = SpectralCube(data=residuals, wcs=cube.wcs,
+                              meta={'BUNIT':cube.unit.to_string()})
+    resid_cube = resid_cube.with_spectral_unit(cube.spectral_axis.unit)
+
+    return fit_params, resid_cube
 
 
 def specfit(x, fx, model, errors=None, exclude=None):
@@ -500,11 +507,12 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
     # Create a mask of pixels to skip in the fitting
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh)
 
-    fit_params = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude)
+    fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude)
 
     results = {'continuum_sub': cube_cont_remove,
                'cont_params': cont_params,
                'fit_params': fit_params,
-               'fit_pixels': skippix}
+               'fit_pixels': skippix,
+               'residuals': resids}
 
     return results
