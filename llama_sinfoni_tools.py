@@ -238,7 +238,7 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
     vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
-    ax_int.show_colorscale(cmap='cubehelix', stretch='log', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
+    ax_int.show_colorscale(cmap='cubehelix', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
     ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdisp_max)
 
@@ -316,8 +316,9 @@ def create_model(line_centers, amp_guess=None,
     """
 
     # Line_names can be a single string. If so convert it to a list
-    if type(line_centers) == str:
+    if type(line_centers) == u.quantity.Quantity:
         line_centers = [line_centers]
+        line_names = [line_names]
     nlines = len(line_centers)
 
     # Create the default amplitude guesses for the lines if necessary
@@ -439,6 +440,8 @@ def cubefit(cube, model, skip=None, exclude=None):
                     fit_params[model.name]['sigma'][i,j] = fit_result.stddev.value*spec_ax_unit
 
                 residuals[:,i,j] = (spec - fit_result(spec_ax.to(u.micron).value))*10**(-17)
+            else:
+                residuals[:,i,j] = spec*10**(-17)
 
     resid_cube = SpectralCube(data=residuals, wcs=cube.wcs,
                               meta={'BUNIT':cube.unit.to_string()})
@@ -465,7 +468,7 @@ def specfit(x, fx, model, errors=None, exclude=None):
     return bestfit
 
 
-def skip_pixels(cube, rms, sn_thresh=3.0):
+def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
     """
     Function to determine which pixels to skip based on a user defined S/N threshold.
     Returns an NxM boolean array where True indicates a pixel to skip.
@@ -473,9 +476,21 @@ def skip_pixels(cube, rms, sn_thresh=3.0):
     If the maximum value is a NaN then that pixel is also skipped.
     """
 
-    spec_max = cube.max(axis=0)
-    sig_to_noise = spec_max/rms
-    skip = (sig_to_noise.value < sn_thresh) | (np.isnan(sig_to_noise.value))
+    if exclude is None:
+        spec_max = cube.max(axis=0)
+        sig_to_noise = spec_max/rms
+        skip = (sig_to_noise.value < sn_thresh) | (np.isnan(sig_to_noise.value))
+    else:
+        xsize = cube.shape[1]
+        ysize = cube.shape[2]
+        skip = np.zeros((xsize, ysize))
+
+        for x in range(xsize):
+            for y in range(ysize):
+                s = cube[:,x,y]
+                s_n = np.max(s[~exclude])/rms[x,y]
+                skip[x,y] = (s_n.value < sn_thresh) | (np.isnan(s_n.value))
+
 
     return skip
 
@@ -505,7 +520,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
     local_rms = calc_local_rms(cube_cont_remove, exclude=cont_exclude)
 
     # Create a mask of pixels to skip in the fitting
-    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh)
+    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
 
     fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude)
 
