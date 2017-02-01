@@ -167,9 +167,9 @@ def calc_line_params(fit_params, line_centers, inst_broad=0):
 
     line_params = {}
 
-    for k in fit_params.keys():
+    for i,k in enumerate(fit_params.keys()):
 
-        lc = line_centers[k]
+        lc = line_centers[i]
         line_params[k] = {}
         amp = fit_params[k]['amplitude']
         line_mean = fit_params[k]['mean']
@@ -500,7 +500,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
     # Create a mask of pixels to skip in the fitting
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh)
 
-    fit_params = cubefit(cube_cont_remove, fitmod, skip=skippix, exclude=fit_exclude)
+    fit_params = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude)
 
     results = {'continuum_sub': cube_cont_remove,
                'cont_params': cont_params,
