@@ -483,7 +483,7 @@ def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
     else:
         xsize = cube.shape[1]
         ysize = cube.shape[2]
-        skip = np.zeros((xsize, ysize))
+        skip = np.zeros((xsize, ysize), dtype=np.bool)
 
         for x in range(xsize):
             for y in range(ysize):
