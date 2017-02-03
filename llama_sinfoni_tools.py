@@ -103,7 +103,7 @@ def remove_cont(cube, degree=1, exclude=None):
     xsize = cube.shape[1]
     ysize = cube.shape[2]
     nparams = degree+1
-    fit_params = np.zeros((xsize, ysize, nparams))
+    fit_params = np.zeros((nparams, xsize, ysize))
     spec_ax = cube.spectral_axis.value
     data_cont_remove = np.zeros(cube.shape)
 
@@ -391,7 +391,7 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None):
+def cubefit(cube, model, skip=None, exclude=None, max_guess=False):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -400,6 +400,7 @@ def cubefit(cube, model, skip=None, exclude=None):
     ysize = cube.shape[2]
     flux_unit = cube.unit
     spec_ax = cube.spectral_axis
+    lam = spec_ax.to(u.micron).value
     spec_ax_unit = cube.spectral_axis.unit
     residuals = np.zeros(cube.shape)
 
@@ -427,7 +428,19 @@ def cubefit(cube, model, skip=None, exclude=None):
 
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
-                fit_result = specfit(spec_ax.to(u.micron).value, spec, model, exclude=exclude)
+                if max_guess:
+                    ind_max = np.argmax(spec)
+                    wave_max = lam[ind_max]
+                    flux_max = spec[ind_max]
+
+                    if hasattr(model, 'submodel_names'):
+                        model.amplitude_0 = flux_max
+                        model.mean_0 = wave_max
+                    else:
+                        model.amplitude = flux_max
+                        model.mean = wave_max
+
+                fit_result = specfit(lam, spec, model, exclude=exclude)
 
                 if hasattr(model, 'submodel_names'):
                     for n in model.submodel_names:
@@ -511,7 +524,7 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
     return slice
 
 
-def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
+def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None, max_guess=False):
 
     # Subtract out the continuum
     cube_cont_remove, cont_params = remove_cont(cube, exclude=cont_exclude)
@@ -522,7 +535,8 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
     # Create a mask of pixels to skip in the fitting
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
 
-    fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude)
+    fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
+                                 max_guess=max_guess)
 
     results = {'continuum_sub': cube_cont_remove,
                'cont_params': cont_params,
@@ -531,3 +545,85 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None):
                'residuals': resids}
 
     return results
+
+def write_files(results, header, savedir='', suffix=''):
+    """
+    Writes out all of the results to FITS files.
+    """
+
+    key_remove = ['CDELT3', 'CRPIX3', 'CUNIT3', 'CTYPE3', 'CRVAL3']
+
+    # Write out the continuum-subtracted spectral cube and the residuals
+    results['continuum_sub'].write(savedir+'continuum_sub'+suffix+'.fits', format='fits', overwrite=True)
+    results['residuals'].write(savedir+'residuals'+suffix+'.fits', format='fits', overwrite=True)
+
+    # Write out the best parameters for the continuum
+    hdu_cont_params =fits.PrimaryHDU(data=results['cont_params'], header=header)
+    hdu_cont_params.header.remove('WCSAXES')
+    for k in key_remove:
+        hdu_cont_params.header.remove(k)
+    hdu_cont_params.header.remove('BUNIT')
+    fits.HDUList([hdu_cont_params]).writeto(savedir+'cont_params'+suffix+'.fits', clobber=True)
+
+     # Write out the pixels that were fit or skipped
+    hdu_skip =fits.PrimaryHDU(data=np.array(results['fit_pixels'], dtype=int), header=header)
+    hdu_skip.header['WCSAXES'] = 2
+    for k in key_remove:
+        hdu_skip.header.remove(k)
+    hdu_skip.header.remove('BUNIT')
+    fits.HDUList([hdu_skip]).writeto(savedir+'skippix'+suffix+'.fits', clobber=True)
+
+    # For each line fit, write out both the best fit gaussian parameters
+    # and physical line parameters
+    lines = results['fit_params'].keys()
+
+    for l in lines:
+
+        gauss_params = results['fit_params'][l]
+        hdu_amp = fits.PrimaryHDU(data=gauss_params['amplitude'].value, header=header)
+        hdu_cent = fits.ImageHDU(data=gauss_params['mean'].value, header=header)
+        hdu_sig = fits.ImageHDU(data=gauss_params['sigma'].value, header=header)
+
+        line_params = results['line_params'][l]
+        hdu_flux = fits.PrimaryHDU(data=line_params['int_flux'].value, header=header)
+        hdu_vel = fits.ImageHDU(data=line_params['velocity'].value, header=header)
+        hdu_vdisp = fits.ImageHDU(data=line_params['veldisp'].value, header=header)
+
+        hdu_amp.header['EXTNAME'] = 'amplitude'
+        hdu_cent.header['EXTNAME'] = 'line center'
+        hdu_sig.header['EXTNAME'] = 'sigma'
+
+        hdu_flux.header['EXTNAME'] = 'int flux'
+        hdu_vel.header['EXTNAME'] = 'velocity'
+        hdu_vdisp.header['EXTNAME'] = 'velocity dispersion'
+
+        hdu_amp.header['WCSAXES'] = 2
+        hdu_cent.header['WCSAXES'] = 2
+        hdu_sig.header['WCSAXES'] = 2
+
+        hdu_flux.header['WCSAXES'] = 2
+        hdu_vel.header['WCSAXES'] = 2
+        hdu_vdisp.header['WCSAXES'] = 2
+
+        for k in key_remove:
+            hdu_amp.header.remove(k)
+            hdu_cent.header.remove(k)
+            hdu_sig.header.remove(k)
+            hdu_flux.header.remove(k)
+            hdu_vel.header.remove(k)
+            hdu_vdisp.header.remove(k)
+
+        hdu_cent.header['BUNIT'] = 'micron'
+        hdu_sig.header['BUNIT'] = 'micron'
+        hdu_flux.header['BUNIT'] = 'W m-2'
+        hdu_vel.header['BUNIT'] = 'km s-1'
+        hdu_vdisp.header['BUNIT'] = 'km s-1'
+
+        gauss_list = fits.HDUList([hdu_amp, hdu_cent, hdu_sig])
+        gauss_list.writeto(savedir+l+'_gauss_params'+suffix+'.fits', clobber=True)
+        line_list = fits.HDUList([hdu_flux, hdu_vel, hdu_vdisp])
+        line_list.writeto(savedir+l+'_line_params'+suffix+'.fits', clobber=True)
+
+    return 0
+
+
