@@ -116,12 +116,12 @@ def remove_cont(cube, degree=1, exclude=None):
                 cont = cont_fit_single(spec_ax, spec, degree=degree, exclude=exclude)
 
                 for n in range(nparams):
-                    fit_params[i, j, n] = cont.parameters[n]
+                    fit_params[n, i, j] = cont.parameters[n]
 
                 data_cont_remove[:, i, j] = (spec - cont(spec_ax))*10**(-17)
 
             else:
-                fit_params[i, j, :] = np.nan
+                fit_params[:,i, j] = np.nan
                 data_cont_remove[:, i, j] = np.nan
 
     cube_cont_remove = SpectralCube(data=data_cont_remove, wcs=cube.wcs,
