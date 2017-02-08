@@ -393,7 +393,8 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None):
+def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None,
+            calc_uncert=False, nmc=1000., rms=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -408,17 +409,28 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
 
     fit_params = {}
 
+    if calc_uncert:
+        fit_params_err = {}
+
     if hasattr(model, 'submodel_names'):
 
         for n in model.submodel_names:
             fit_params[n] = {'amplitude': np.zeros((xsize, ysize))*flux_unit*np.nan,
                              'mean': np.zeros((xsize, ysize))*spec_ax_unit*np.nan,
                              'sigma': np.zeros((xsize, ysize))*spec_ax_unit*np.nan}
+            if calc_uncert:
+               fit_params_err[n] = {'amp_err': np.zeros((nmc, xsize, ysize))*flux_unit*np.nan,
+                             'mean_err': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan,
+                             'sigma_err': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
     else:
         fit_params[model.name] = {'amplitude': np.zeros((xsize, ysize))*flux_unit*np.nan,
                                   'mean': np.zeros((xsize, ysize))*spec_ax_unit*np.nan,
                                   'sigma': np.zeros((xsize, ysize))*spec_ax_unit*np.nan}
+        if calc_uncert:
+           fit_params_err[model.name] = {'amp_err': np.zeros((nmc, xsize, ysize))*flux_unit*np.nan,
+                                         'mean_err': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan,
+                                         'sigma_err': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
     if skip is None:
         skip = np.zeros((xsize, ysize), dtype=np.bool)
@@ -427,6 +439,10 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
         for j in range(ysize):
 
             spec = cube[:, i, j].value/10**(-17)
+            if calc_uncert:
+                rms_i = rms[i, j].value/10**(-17)
+            else:
+                rms_i = None
 
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
@@ -444,19 +460,43 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                         model.amplitude = flux_max
                         model.mean = wave_max
 
-                fit_result = specfit(lam, spec, model, exclude=exclude)
+                fit_results = specfit(lam, spec, model, exclude=exclude, calc_uncert=calc_uncert, nmc=nmc, rms=rms_i)
+
+                if calc_uncert:
+                    best_fit = fit_results[0]
+                    err_fits = fit_results[1]
+                else:
+                    best_fit = fit_results
 
                 if hasattr(model, 'submodel_names'):
                     for n in model.submodel_names:
-                        fit_params[n]['amplitude'][i,j] = fit_result[n].amplitude.value*flux_unit*10**(-17)
-                        fit_params[n]['mean'][i,j] = fit_result[n].mean.value*spec_ax_unit
-                        fit_params[n]['sigma'][i,j] = fit_result[n].stddev.value*spec_ax_unit
-                else:
-                    fit_params[model.name]['amplitude'][i,j] = fit_result.amplitude.value*flux_unit*10**(-17)
-                    fit_params[model.name]['mean'][i,j] = fit_result.mean.value*spec_ax_unit
-                    fit_params[model.name]['sigma'][i,j] = fit_result.stddev.value*spec_ax_unit
+                        fit_params[n]['amplitude'][i,j] = best_fit[n].amplitude.value*flux_unit*10**(-17)
+                        fit_params[n]['mean'][i,j] = best_fit[n].mean.value*spec_ax_unit
+                        fit_params[n]['sigma'][i,j] = best_fit[n].stddev.value*spec_ax_unit
 
-                residuals[:,i,j] = (spec - fit_result(spec_ax.to(u.micron).value))*10**(-17)
+                        if calc_uncert:
+                            mc_amps = np.array([err_fits[k][n].amplitude.value for k in range(nmc)])
+                            mc_mean = np.array([err_fits[k][n].mean.value for k in range(nmc)])
+                            mc_sig = np.array([err_fits[k][n].stddev.value for k in range(nmc)])
+
+                            fit_params_err[n]['amp_err'][:,i,j] = mc_amps*flux_unit*10**(-17)
+                            fit_params_err[n]['mean_err'][:,i,j] = mc_mean*spec_ax_unit
+                            fit_params_err[n]['sigma_err'][:,i,j] = mc_sig*spec_ax_unit
+                else:
+                    fit_params[model.name]['amplitude'][i,j] = best_fit.amplitude.value*flux_unit*10**(-17)
+                    fit_params[model.name]['mean'][i,j] = best_fit.mean.value*spec_ax_unit
+                    fit_params[model.name]['sigma'][i,j] = best_fit.stddev.value*spec_ax_unit
+
+                    if calc_uncert:
+                        mc_amps = np.array([err_fits[k].amplitude.value for k in range(nmc)])
+                        mc_mean = np.array([err_fits[k].mean.value for k in range(nmc)])
+                        mc_sig = np.array([err_fits[k].stddev.value for k in range(nmc)])
+
+                        fit_params_err[model.name]['amp_err'][:,i,j] = mc_amps*flux_unit*10**(-17)
+                        fit_params_err[model.name]['mean_err'][:,i,j] = mc_mean*spec_ax_unit
+                        fit_params_err[model.name]['sigma_err'][:,i,j] = mc_sig*spec_ax_unit
+
+                residuals[:,i,j] = (spec - best_fit(spec_ax.to(u.micron).value))*10**(-17)
             else:
                 residuals[:,i,j] = spec*10**(-17)
 
@@ -464,25 +504,34 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                               meta={'BUNIT':cube.unit.to_string()})
     resid_cube = resid_cube.with_spectral_unit(cube.spectral_axis.unit)
 
-    return fit_params, resid_cube
+    if calc_uncert:
+        return fit_params, resid_cube, fit_params_err
+    else:
+        return fit_params, resid_cube
 
 
-def specfit(x, fx, model, errors=None, exclude=None):
+def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100):
     """
     Function to fit a single spectrum with a model.
     """
 
-    if errors is None:
-        errors = np.ones(len(fx))
     if exclude is not None:
         x = x[~exclude]
         fx = fx[~exclude]
-        errors = errors[~exclude]
 
     fitter = apy_mod.fitting.LevMarLSQFitter()
-    bestfit = fitter(model, x, fx, weights=1./errors)
+    bestfit = fitter(model, x, fx)
 
-    return bestfit
+    if calc_uncert:
+        rand_fits = []
+        for i in range(nmc):
+            rand_spec = np.random.randn(len(fx))*rms + fx
+            rand_fit_i = fitter(model, x, rand_spec)
+            rand_fits.append(rand_fit_i)
+
+        return [bestfit, rand_fits]
+    else:
+        return bestfit
 
 
 def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
