@@ -240,7 +240,7 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
     vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
-    ax_int.show_colorscale(cmap='cubehelix', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
+    ax_int.show_colorscale(cmap='cubehelix', stretch='arcsinh', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
     ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdisp_max)
 
@@ -393,7 +393,7 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None, max_guess=False):
+def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -431,9 +431,11 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False):
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
                 if max_guess:
-                    ind_max = np.argmax(spec)
-                    wave_max = lam[ind_max]
-                    flux_max = spec[ind_max]
+                    if guess_region is None:
+                         guess_region = np.ones(len(spec), dtype=np.bool)
+                    ind_max = np.argmax(spec[guess_region])
+                    wave_max = lam[guess_region][ind_max]
+                    flux_max = spec[guess_region][ind_max]
 
                     if hasattr(model, 'submodel_names'):
                         model.amplitude_0 = flux_max
@@ -526,7 +528,8 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
     return slice
 
 
-def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None, max_guess=False):
+def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
+           max_guess=False, guess_region=None):
 
     # Subtract out the continuum
     cube_cont_remove, cont_params = remove_cont(cube, exclude=cont_exclude)
@@ -538,7 +541,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None, max_
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
 
     fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
-                                 max_guess=max_guess)
+                                 max_guess=max_guess, guess_region=guess_region)
 
     results = {'continuum_sub': cube_cont_remove,
                'cont_params': cont_params,
