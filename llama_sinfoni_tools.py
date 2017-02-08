@@ -9,7 +9,7 @@ import numpy as np
 import astropy.units as u
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
-from astropy.stats import sigma_clipped_stats
+from astropy.stats import sigma_clipped_stats, sigma_clip
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
 import aplpy
@@ -88,9 +88,11 @@ def cont_fit_single(x, spectrum, degree=1, errors=None, exclude=None):
     cont.c1 = (y2-y1)/(x2-x1)
     cont.c0 = y1 - cont.c1*x1
 
+    # Initialize the main fitter and the fitter that implements outlier removal using
+    # sigma clipping. Default is to do 5 iterations removing all 3-sigma outliers
     fitter = apy_mod.fitting.LevMarLSQFitter()
-    #cont_fit = fitter(cont, x, spectrum, weights=1./errors)
-    cont_fit = fitter(cont, x, spectrum)
+    or_fitter = apy_mod.fitting.FittingWithOutlierRemoval(fitter, sigma_clip, niter=5, sigma=3.0)
+    filtered_data, cont_fit = or_fitter(cont, x, spectrum)
 
     return cont_fit
 
@@ -465,7 +467,7 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False):
 
 def specfit(x, fx, model, errors=None, exclude=None):
     """
-    Function to fit a single spectrum with a model
+    Function to fit a single spectrum with a model.
     """
 
     if errors is None:
