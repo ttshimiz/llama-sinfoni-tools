@@ -401,6 +401,8 @@ def create_model(line_centers, amp_guess=None,
                 mod_single.stddev.min = 0         # can't have negative width
             if width_limits[i][1] is not None:
                 mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_center.value
+        else:
+            mod_single.stddev.min = 0
 
         # Set the fixed parameters
         if center_fixed is not None:
