@@ -15,6 +15,7 @@ from spectral_cube import SpectralCube
 import aplpy
 import matplotlib.pyplot as plt
 import lines
+import multiprocessing
 
 def read_data(fn):
     """
@@ -531,7 +532,8 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
         return fit_params, resid_cube
 
 
-def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100):
+def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100,
+            parallel=False, cores=None):
     """
     Function to fit a single spectrum with a model.
     """
@@ -543,17 +545,43 @@ def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100):
     fitter = apy_mod.fitting.LevMarLSQFitter()
     bestfit = fitter(model, x, fx)
 
-    if calc_uncert:
+    if (calc_uncert) & (~parallel):
         rand_fits = []
         for i in range(nmc):
             rand_spec = np.random.randn(len(fx))*rms + fx
-            rand_fit_i = fitter(model, x, rand_spec)
+            rand_fit_i = specfit_single(x, rand_spec, model)
             rand_fits.append(rand_fit_i)
+    elif (calc_uncert) & (parallel):
 
+        rand_fits = specfit_parallel(x, fx, model, rms, nmc=nmc, cores=cores)
+
+    if calc_uncert:
         return [bestfit, rand_fits]
     else:
         return bestfit
 
+
+def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
+
+    if cores is None:
+        cores = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(cores)
+
+    mc_spec = np.zeros((nmc, len(fx)))
+    for i in range(nmc):
+        mc_spec[i, :] = np.random.randn(len(fx))*rms + fx
+    result = [pool.apply_async(specfit_single, args=(x, mc_spec[i, :], model)) for i in range(nmc)]
+    result = [p.get() for p in result]
+
+    return result
+
+
+def specfit_with_noise(x, fx, model):
+
+    fitter = apy_mod.fitting.LevMarLSQFitter()
+    modfit = fitter(model, x, fx)
+
+    return modfit
 
 def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
     """
