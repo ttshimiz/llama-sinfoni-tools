@@ -228,7 +228,7 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
 
 def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
-                     vdisp_max=300.):
+                     vdisp_max=300., mask=None, flux_scale='arcsinh'):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -253,6 +253,11 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
     velocity_hdu.data = line_params['velocity'].value
     veldisp_hdu.data = line_params['veldisp'].value
 
+    if mask is not None:
+        int_flux_hdu.data[mask] = np.nan
+        velocity_hdu.data[mask] = np.nan
+        veldisp_hdu.data[mask] = np.nan
+
     fig = plt.figure(figsize=(18,6))
 
     ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
@@ -263,7 +268,7 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
     vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
-    ax_int.show_colorscale(cmap='cubehelix', stretch='arcsinh', vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
+    ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
     ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdisp_max)
 
@@ -712,7 +717,7 @@ def write_files(results, header, savedir='', suffix=''):
     hdu_cont_params.header.remove('BUNIT')
     fits.HDUList([hdu_cont_params]).writeto(savedir+'cont_params'+suffix+'.fits', clobber=True)
 
-     # Write out the pixels that were fit or skipped
+    # Write out the pixels that were fit or skipped
     hdu_skip =fits.PrimaryHDU(data=np.array(results['fit_pixels'], dtype=int), header=header)
     hdu_skip.header['WCSAXES'] = 2
     for k in key_remove:
