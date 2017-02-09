@@ -248,11 +248,26 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
 
     header['WCSAXES'] = 2
     header['NAXIS'] = 2
-    header.remove('CDELT3')
-    header.remove('CRVAL3')
-    header.remove('CUNIT3')
-    header.remove('CRPIX3')
-    header.remove('CTYPE3')
+    try:
+        header.remove('CDELT3')
+    except KeyError:
+        pass
+    try:
+        header.remove('CRVAL3')
+    except KeyError:
+        pass
+    try:
+        header.remove('CUNIT3')
+    except KeyError:
+        pass
+    try:
+        header.remove('CRPIX3')
+    except KeyError:
+        pass
+    try:
+        header.remove('CTYPE3')
+    except KeyError:
+        pass
 
     int_flux_hdu.header = header
     velocity_hdu.header = header
