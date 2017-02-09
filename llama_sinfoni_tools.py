@@ -187,7 +187,10 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
         # Integrated flux is just a Gaussian integral from -inf to inf
         int_flux = np.sqrt(2*np.pi)*amp*np.abs(line_sigma)
         if fit_params_mc is not None:
-            int_flux_mc = np.sqrt(2*np.pi)*fit_params_mc[k]['amplitude']*np.abs(fit_params_mc[k]['sigma'])
+            amp_mc = fit_params_mc[k]['amplitude']
+            mean_mc = fit_params_mc[k]['mean']
+            sigma_mc = fit_params_mc[k]['sigma']
+            int_flux_mc = np.sqrt(2*np.pi)*amp_mc*np.abs(sigma_mc)
 
         # Convert the line mean and line sigma to km/s if not already
         if line_mean.unit.physical_type != 'speed':
@@ -195,23 +198,18 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
             veldisp = (line_mean+line_sigma).to(u.km/u.s, equivalencies=u.doppler_optical(line_mean))
 
             if fit_params_mc is not None:
-                velocity_mc = fit_params_mc[k]['mean'].to(u.km/u.s, equivalencies=u.doppler_optical(lc))
-                veldisp_mc = (fit_params_mc[k]['mean']+fit_params_mc[k]['sigma']).to(u.km/u.s, equivalencies=u.doppler_optical(fit_params_mc[k]['mean']))
+                velocity_mc = mean_mc.to(u.km/u.s, equivalencies=u.doppler_optical(lc))
+                veldisp_mc = (mean_mc+sigma_mc).to(u.km/u.s, equivalencies=u.doppler_optical(mean_mc))
         else:
             velocity = line_mean.to(u.km/u.s)
             veldisp = line_sigma.to(u.km/u.s)
 
             if fit_params_mc is not None:
-                velocity_mc = fit_params_mc[k]['mean'].to(u.km/u.s)
-                veldisp_mc = fit_params_mc[k]['sigma'].to(u.km/u.s)
+                velocity_mc = mean_mc.to(u.km/u.s)
+                veldisp_mc = sigma_mc.to(u.km/u.s)
 
         line_params[k]['int_flux'] = int_flux
         line_params[k]['velocity'] = velocity
-
-        if fit_params_mc is not None:
-            line_params[k]['int_flux_err'] = int_flux_mc.std(axis=0)
-            line_params[k]['velocity_err'] = velocity_mc.std(axis=0)
-
 
         # Subtract off instrumental broadening
         phys_veldisp = np.sqrt(veldisp**2 - inst_broad**2)
@@ -220,7 +218,18 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
         line_params[k]['veldisp'] = phys_veldisp
 
         if fit_params_mc is not None:
-            veldisp_err = veldisp_mc.std(axis=0)
+            int_flux_err = np.zeros(int_flux.shape)*int_flux.unit
+            vel_err = np.zeros(velocity.shape)*velocity.unit
+            veldisp_err = np.zeros(veldisp.shape)*veldisp.unit
+
+            for i in range(int_flux.shape[0]):
+                for j in range(int_flux.shape[1]):
+                    int_flux_err[i, j] = np.nanstd(int_flux_mc[:, i, j].value)*int_flux.unit
+                    vel_err[i, j] = np.nanstd(velocity_mc[:, i, j].value)*velocity.unit
+                    veldisp_err[i, j] = np.nanstd(veldisp_mc[:, i, j].value)*veldisp.unit
+
+            line_params[k]['int_flux_err'] = int_flux_err
+            line_params[k]['velocity_err'] = vel_err
             phys_veldisp_err = veldisp*veldisp_err/phys_veldisp
             line_params[k]['veldisp_err'] = phys_veldisp_err
 
