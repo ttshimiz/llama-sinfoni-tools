@@ -294,7 +294,7 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
 
     ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
-    ax_vdp.show_colorscale(cmap='gist_heat', vmin=0, vmax=vdisp_max)
+    ax_vdp.show_colorscale(cmap='inferno', vmin=0, vmax=vdisp_max)
 
     ax_int.set_nan_color('k')
     ax_vel.set_nan_color('k')
