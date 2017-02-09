@@ -16,6 +16,7 @@ import aplpy
 import matplotlib.pyplot as plt
 import lines
 import multiprocessing
+import time
 
 def read_data(fn):
     """
@@ -416,7 +417,7 @@ def create_model(line_centers, amp_guess=None,
     return final_model
 
 def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None,
-            calc_uncert=False, nmc=1000., rms=None):
+            calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -482,7 +483,9 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                         model.amplitude = flux_max
                         model.mean = wave_max
 
-                fit_results = specfit(lam, spec, model, exclude=exclude, calc_uncert=calc_uncert, nmc=nmc, rms=rms_i)
+                fit_results = specfit(lam, spec, model, exclude=exclude,
+                                      calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
+                                      parallel=parallel)
 
                 if calc_uncert:
                     best_fit = fit_results[0]
@@ -527,30 +530,34 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
     resid_cube = resid_cube.with_spectral_unit(cube.spectral_axis.unit)
 
     if calc_uncert:
-        return fit_params, resid_cube, fit_params_mc
+        return [fit_params, resid_cube, fit_params_mc]
     else:
-        return fit_params, resid_cube
+        return [fit_params, resid_cube]
 
 
 def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100,
             parallel=False, cores=None):
     """
     Function to fit a single spectrum with a model.
+    Option to run a Monte Carlo simulation to determine the uncertainties using
+    either a simple for-loop or parallel.
     """
 
     if exclude is not None:
         x = x[~exclude]
         fx = fx[~exclude]
 
-    fitter = apy_mod.fitting.LevMarLSQFitter()
-    bestfit = fitter(model, x, fx)
+    bestfit = specfit_single(x, fx, model)
 
     if (calc_uncert) & (~parallel):
+
         rand_fits = []
+
         for i in range(nmc):
             rand_spec = np.random.randn(len(fx))*rms + fx
             rand_fit_i = specfit_single(x, rand_spec, model)
             rand_fits.append(rand_fit_i)
+
     elif (calc_uncert) & (parallel):
 
         rand_fits = specfit_parallel(x, fx, model, rms, nmc=nmc, cores=cores)
@@ -565,18 +572,18 @@ def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
 
     if cores is None:
         cores = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(cores)
+    with multiprocessing.Pool(cores) as pool:
 
-    mc_spec = np.zeros((nmc, len(fx)))
-    for i in range(nmc):
-        mc_spec[i, :] = np.random.randn(len(fx))*rms + fx
-    result = [pool.apply_async(specfit_single, args=(x, mc_spec[i, :], model)) for i in range(nmc)]
-    result = [p.get() for p in result]
+        mc_spec = np.zeros((nmc, len(fx)))
+        for i in range(nmc):
+            mc_spec[i, :] = np.random.randn(len(fx))*rms + fx
+        result = [pool.apply_async(specfit_single, args=(x, mc_spec[i, :], model)) for i in range(nmc)]
+        result = [p.get() for p in result]
 
     return result
 
 
-def specfit_with_noise(x, fx, model):
+def specfit_single(x, fx, model):
 
     fitter = apy_mod.fitting.LevMarLSQFitter()
     modfit = fitter(model, x, fx)
@@ -627,27 +634,54 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
 
 
 def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
-           max_guess=False, guess_region=None):
+           max_guess=False, guess_region=None, calc_uncert=False,
+           nmc=100, cores=None, parallel=False):
 
     # Subtract out the continuum
+    print 'Measuring and subtracting the continuum...'
+    t0 = time.time()
     cube_cont_remove, cont_params = remove_cont(cube, exclude=cont_exclude)
+    t1 = time.time()
+    print 'Continuum successfully subtracted in', t1-t0, 'seconds.'
 
     # Determine the RMS around the line
+    print 'Measuring RMS across the cube...'
     local_rms = calc_local_rms(cube_cont_remove, exclude=cont_exclude)
+    print 'RMS measurement complete!'
 
     # Create a mask of pixels to skip in the fitting
+    print 'Creating a mask to skip model fitting for spaxels with S/N <', sn_thresh
     skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
 
-    fit_params, resids = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
-                                 max_guess=max_guess, guess_region=guess_region)
+    print 'Fitting the cube...'
+    t2 = time.time()
+    results = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
+                                 max_guess=max_guess, guess_region=guess_region, calc_uncert=calc_uncert,
+                                 rms=local_rms, nmc=nmc, cores=cores, parallel=parallel)
+    t3 = time.time()
+    print 'Cube successfully fit in', t3-t2, 'seconds.'
+    fit_params = results[0]
+    resids = results[1]
 
-    results = {'continuum_sub': cube_cont_remove,
-               'cont_params': cont_params,
-               'fit_params': fit_params,
-               'fit_pixels': skippix,
-               'residuals': resids}
+    if calc_uncert:
+        fit_params_mc = fit_params[2]
 
-    return results
+        total_results = {'continuum_sub': cube_cont_remove,
+                         'cont_params': cont_params,
+                         'fit_params': fit_params,
+                         'fit_params_mc': fit_params_mc,
+                         'fit_pixels': skippix,
+                         'residuals': resids,
+                         'rms': local_rms}
+    else:
+        total_results = {'continuum_sub': cube_cont_remove,
+                         'cont_params': cont_params,
+                         'fit_params': fit_params,
+                         'fit_pixels': skippix,
+                         'residuals': resids,
+                         'rms': local_rms}
+
+    return total_results
 
 def write_files(results, header, savedir='', suffix=''):
     """
