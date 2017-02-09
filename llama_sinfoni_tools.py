@@ -715,7 +715,7 @@ def write_files(results, header, savedir='', suffix=''):
     for k in key_remove:
         hdu_cont_params.header.remove(k)
     hdu_cont_params.header.remove('BUNIT')
-    fits.HDUList([hdu_cont_params]).writeto(savedir+'cont_params'+suffix+'.fits', clobber=True)
+    fits.HDUList([hdu_cont_params]).writeto(savedir+'cont_params'+suffix+'.fits', overwrite=True)
 
     # Write out the pixels that were fit or skipped
     hdu_skip =fits.PrimaryHDU(data=np.array(results['fit_pixels'], dtype=int), header=header)
@@ -723,11 +723,22 @@ def write_files(results, header, savedir='', suffix=''):
     for k in key_remove:
         hdu_skip.header.remove(k)
     hdu_skip.header.remove('BUNIT')
-    fits.HDUList([hdu_skip]).writeto(savedir+'skippix'+suffix+'.fits', clobber=True)
+    fits.HDUList([hdu_skip]).writeto(savedir+'skippix'+suffix+'.fits', overwrite=True)
+
+    # Write out the rms estimate
+    hdu_rms =fits.PrimaryHDU(data=np.array(results['rms'], dtype=int), header=header)
+    hdu_rms.header['WCSAXES'] = 2
+    for k in key_remove:
+        hdu_rms.header.remove(k)
+    hdu_rms.header.remove('BUNIT')
+    fits.HDUList([hdu_rms]).writeto(savedir+'rms'+suffix+'.fits', overwrite=True)
 
     # For each line fit, write out both the best fit gaussian parameters
     # and physical line parameters
     lines = results['fit_params'].keys()
+
+    # See if an uncertainty estimate was made
+    unc_exist = results.has_key('fit_params_mc')
 
     for l in lines:
 
@@ -740,6 +751,16 @@ def write_files(results, header, savedir='', suffix=''):
         hdu_flux = fits.PrimaryHDU(data=line_params['int_flux'].value, header=header)
         hdu_vel = fits.ImageHDU(data=line_params['velocity'].value, header=header)
         hdu_vdisp = fits.ImageHDU(data=line_params['veldisp'].value, header=header)
+
+        if unc_exist:
+            gauss_params_mc = results['fit_params_mc'][l]
+            hdu_amp_mc = fits.PrimaryHDU(data=gauss_params_mc['amplitude'].value, header=header)
+            hdu_cent_mc = fits.ImageHDU(data=gauss_params_mc['mean'].value, header=header)
+            hdu_sig_mc = fits.ImageHDU(data=gauss_params_mc['sigma'].value, header=header)
+
+            hdu_flux_err = fits.ImageHDU(data=line_params['int_flux_err'].value, header=header)
+            hdu_vel_err = fits.ImageHDU(data=line_params['velocity_err'].value, header=header)
+            hdu_vdisp_err = fits.ImageHDU(data=line_params['veldisp_err'].value, header=header)
 
         hdu_amp.header['EXTNAME'] = 'amplitude'
         hdu_cent.header['EXTNAME'] = 'line center'
@@ -757,6 +778,23 @@ def write_files(results, header, savedir='', suffix=''):
         hdu_vel.header['WCSAXES'] = 2
         hdu_vdisp.header['WCSAXES'] = 2
 
+        if unc_exist:
+            hdu_amp_mc.header['EXTNAME'] = 'MC amplitude'
+            hdu_cent.header['EXTNAME'] = 'MC line center'
+            hdu_sig.header['EXTNAME'] = 'MC sigma'
+
+            hdu_flux_err.header['EXTNAME'] = 'int flux error'
+            hdu_vel_err.header['EXTNAME'] = 'velocity error'
+            hdu_vdisp_err.header['EXTNAME'] = 'velocity dispersion error'
+
+            hdu_amp.header['WCSAXES'] = 2
+            hdu_cent.header['WCSAXES'] = 2
+            hdu_sig.header['WCSAXES'] = 2
+
+            hdu_flux.header['WCSAXES'] = 2
+            hdu_vel.header['WCSAXES'] = 2
+            hdu_vdisp.header['WCSAXES'] = 2
+
         for k in key_remove:
             hdu_amp.header.remove(k)
             hdu_cent.header.remove(k)
@@ -765,16 +803,37 @@ def write_files(results, header, savedir='', suffix=''):
             hdu_vel.header.remove(k)
             hdu_vdisp.header.remove(k)
 
+            if unc_exist:
+                hdu_amp_mc.header.remove(k)
+                hdu_cent_mc.header.remove(k)
+                hdu_sig_mc.header.remove(k)
+                hdu_flux_err.header.remove(k)
+                hdu_vel_err.header.remove(k)
+                hdu_vdisp_err.header.remove(k)
+
         hdu_cent.header['BUNIT'] = 'micron'
         hdu_sig.header['BUNIT'] = 'micron'
         hdu_flux.header['BUNIT'] = 'W m-2'
         hdu_vel.header['BUNIT'] = 'km s-1'
         hdu_vdisp.header['BUNIT'] = 'km s-1'
 
+        if unc_exist:
+            hdu_cent_mc.header['BUNIT'] = 'micron'
+            hdu_sig_mc.header['BUNIT'] = 'micron'
+            hdu_flux_err.header['BUNIT'] = 'W m-2'
+            hdu_vel_err.header['BUNIT'] = 'km s-1'
+            hdu_vdisp_err.header['BUNIT'] = 'km s-1'
+
         gauss_list = fits.HDUList([hdu_amp, hdu_cent, hdu_sig])
-        gauss_list.writeto(savedir+l+'_gauss_params'+suffix+'.fits', clobber=True)
-        line_list = fits.HDUList([hdu_flux, hdu_vel, hdu_vdisp])
-        line_list.writeto(savedir+l+'_line_params'+suffix+'.fits', clobber=True)
+        gauss_list.writeto(savedir+l+'_gauss_params'+suffix+'.fits', overwrite=True)
+        if unc_exist:
+            gauss_mc_list = fits.HDUList([hdu_amp_mc, hdu_cent_mc, hdu_sig_mc])
+            gauss_mc_list.writeto(savedir+l+'_gauss_params_mc'+suffix+'.fits', overwrite=True)
+            line_list = fits.HDUList([hdu_flux, hdu_vel, hdu_vdisp, hdu_flux_err, hdu_vel_err, hdu_vdisp_err])
+            line_list.writeto(savedir+l+'_line_params'+suffix+'.fits', overwrite=True)
+        else:
+            line_list = fits.HDUList([hdu_flux, hdu_vel, hdu_vdisp])
+            line_list.writeto(savedir+l+'_line_params'+suffix+'.fits', overwrite=True)
 
     return 0
 
