@@ -420,11 +420,11 @@ def create_model(line_centers, amp_guess=None,
 
         if width_limits is not None:
             if width_limits[i][0] is not None:
-                mod_single.stddev.min = width_limits[i][0].to(u.micron, equivalencies=opt_conv).value - line_center.value
+                mod_single.stddev.min = width_limits[i][0].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
             else:
                 mod_single.stddev.min = 0         # can't have negative width
             if width_limits[i][1] is not None:
-                mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_center.value
+                mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
         else:
             mod_single.stddev.min = 0
 
@@ -752,11 +752,10 @@ def write_files(results, header, savedir='', suffix=''):
     fits.HDUList([hdu_skip]).writeto(savedir+'skippix'+suffix+'.fits', overwrite=True)
 
     # Write out the rms estimate
-    hdu_rms =fits.PrimaryHDU(data=np.array(results['rms'], dtype=int), header=header)
+    hdu_rms =fits.PrimaryHDU(data=np.array(results['rms'].value), header=header)
     hdu_rms.header['WCSAXES'] = 2
     for k in key_remove:
         hdu_rms.header.remove(k)
-    hdu_rms.header.remove('BUNIT')
     fits.HDUList([hdu_rms]).writeto(savedir+'rms'+suffix+'.fits', overwrite=True)
 
     # For each line fit, write out both the best fit gaussian parameters
