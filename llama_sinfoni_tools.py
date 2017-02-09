@@ -432,6 +432,12 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
 
     fit_params = {}
 
+    if skip is None:
+        skip = np.zeros((xsize, ysize), dtype=np.bool)
+
+    print "Starting 'cubefit' with {0} spectral points and {1}x{2} image shape" .format(cube.shape[0], xsize, ysize)
+    print "Total number of spaxels to fit: {0}/{1}".format(np.int(np.sum(~skip)), xsize*ysize)
+
     if calc_uncert:
         fit_params_mc = {}
 
@@ -442,7 +448,7 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                              'mean': np.zeros((xsize, ysize))*spec_ax_unit*np.nan,
                              'sigma': np.zeros((xsize, ysize))*spec_ax_unit*np.nan}
             if calc_uncert:
-               fit_params_mc[n] = {'ammplitude': np.zeros((nmc, xsize, ysize))*flux_unit*np.nan,
+               fit_params_mc[n] = {'amplitude': np.zeros((nmc, xsize, ysize))*flux_unit*np.nan,
                              'mean': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan,
                              'sigma': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
@@ -455,9 +461,12 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                                          'mean': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan,
                                          'sigma': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
-    if skip is None:
-        skip = np.zeros((xsize, ysize), dtype=np.bool)
-
+    print "Lines being fit: {0}".format(fit_params.keys())
+    if calc_uncert:
+        print "Calculating uncertainties using MC simulation with {0} iterations.".format(nmc)
+    else:
+        print "No calculation of uncertainties."
+    print "Starting fitting..."
     for i in range(xsize):
         for j in range(ysize):
 
@@ -486,7 +495,7 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                 fit_results = specfit(lam, spec, model, exclude=exclude,
                                       calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
                                       parallel=parallel)
-
+                print "Pixel {0},{1} fit successfully.".format(i,j)
                 if calc_uncert:
                     best_fit = fit_results[0]
                     err_fits = fit_results[1]
@@ -523,6 +532,7 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
 
                 residuals[:,i,j] = (spec - best_fit(spec_ax.to(u.micron).value))*10**(-17)
             else:
+                print "Pixel {0},{1} skipped.".format(i,j)
                 residuals[:,i,j] = spec*10**(-17)
 
     resid_cube = SpectralCube(data=residuals, wcs=cube.wcs,
@@ -570,15 +580,15 @@ def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100,
 
 def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
 
-    if cores is None:
-        cores = multiprocessing.cpu_count()
-    with multiprocessing.Pool(cores) as pool:
+    pool = multiprocessing.Pool(cores)
 
-        mc_spec = np.zeros((nmc, len(fx)))
-        for i in range(nmc):
-            mc_spec[i, :] = np.random.randn(len(fx))*rms + fx
-        result = [pool.apply_async(specfit_single, args=(x, mc_spec[i, :], model)) for i in range(nmc)]
-        result = [p.get() for p in result]
+    mc_spec = np.zeros((nmc, len(fx)))
+    for i in range(nmc):
+        mc_spec[i, :] = np.random.randn(len(fx))*rms + fx
+    result = [pool.apply_async(specfit_single, args=(x, mc_spec[i, :], model)) for i in range(nmc)]
+    result = [p.get() for p in result]
+
+    pool.close()
 
     return result
 
@@ -664,7 +674,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
     resids = results[1]
 
     if calc_uncert:
-        fit_params_mc = fit_params[2]
+        fit_params_mc = results[2]
 
         total_results = {'continuum_sub': cube_cont_remove,
                          'cont_params': cont_params,
