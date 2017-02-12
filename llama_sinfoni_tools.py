@@ -55,8 +55,11 @@ def read_data(fn):
     wcs = WCS(header)
 
     # Check now the cdelt3 value in the WCS object
-    if wcs.wcs.cd[2, 2] != cdelt3:
-        wcs.wcs.cd[2, 2] = cdelt3
+    try:
+        if wcs.wcs.cd[2, 2] != cdelt3:
+            wcs.wcs.cd[2, 2] = cdelt3
+    except AttributeError:
+        pass
 
     cube = SpectralCube(data=data, wcs=wcs, read_beam=False, meta={'BUNIT':'W / (m2 micron)'})
 
