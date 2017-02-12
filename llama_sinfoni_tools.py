@@ -879,7 +879,7 @@ def plot_specfit(cube, model, fit_params, pixel, ax=None):
     else:
         fig = ax.figure
 
-    x, y = pixel
+    y, x = pixel
     spec = cube[:, x, y]
     waves = spec.spectral_axis.to(u.micron).value
     flux = spec.value
