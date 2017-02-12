@@ -18,7 +18,7 @@ import lines
 import multiprocessing
 import time
 
-def read_data(fn):
+def read_data(fn, scale=True):
     """
 
     Reads in SINFONI FITS cube, cleans up the header, and returns a
@@ -34,7 +34,11 @@ def read_data(fn):
 
     """
 
-    data = fits.getdata(fn)*1e-17
+    if scale:
+        data = fits.getdata(fn)*1e-17
+    else:
+        data = fits.getdata(fn)
+
     header = fits.getheader(fn)
 
     # Check the spectral axis units and values
