@@ -902,3 +902,45 @@ def plot_specfit(cube, model, fit_params, pixel, ax=None):
     ax.set_ylabel('Flux ['+spec.unit.to_string()+']')
 
     return fig
+
+
+def read_line_params(file):
+    """
+    Function to read a FITS file containing the physical line params and return a
+    dictionary with the same structure as what is output of calc_line_params.
+    """
+
+    hdu_list = fits.open(file)
+
+    line_params = {}
+    line_params['int_flux'] = hdu_list['int flux'].data*u.W/u.m**2/u.micron
+    line_params['velocity'] = hdu_list['velocity'].data*u.km/u.s
+    line_params['veldisp'] = hdu_list['velocity dispersion'].data*u.km/u.s
+
+    if len(hdu_list) == 6:
+        line_params['int_flux_err'] = hdu_list['int flux error'].data*u.W/u.m**2/u.micron
+        line_params['velocity_err'] = hdu_list['velocity error'].data*u.km/u.s
+        line_params['veldisp_err'] = hdu_list['velocity dispersion error'].data*u.km/u.s
+
+    return line_params
+
+
+def read_fit_params(files, line_names):
+    """
+    Function to read the FITS file(s) for the fit parameters of a spectral model.
+    """
+
+    if type(line_names) == str:
+        line_names = [line_names]
+        files = [files]
+
+    fit_params = {n:{'amplitude':[], 'mean':[], 'sigma':[]} for n in line_names}
+
+    for i, f in enumerate(files):
+
+        hdu_list = fits.open(f)
+        fit_params[line_names[i]]['amplitude'] = hdu_list[0].data*u.W/u.m**2/u.micron
+        fit_params[line_names[i]]['mean'] = hdu_list[1].data*u.micron
+        fit_params[line_names[i]]['sigma'] = hdu_list[2].data*u.micron
+
+    return fit_params
