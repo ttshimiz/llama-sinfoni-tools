@@ -808,8 +808,8 @@ def write_files(results, header, savedir='', suffix=''):
 
         if unc_exist:
             hdu_amp_mc.header['EXTNAME'] = 'MC amplitude'
-            hdu_cent.header['EXTNAME'] = 'MC line center'
-            hdu_sig.header['EXTNAME'] = 'MC sigma'
+            hdu_cent_mc.header['EXTNAME'] = 'MC line center'
+            hdu_sig_mc.header['EXTNAME'] = 'MC sigma'
 
             hdu_flux_err.header['EXTNAME'] = 'int flux error'
             hdu_vel_err.header['EXTNAME'] = 'velocity error'
