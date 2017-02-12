@@ -944,3 +944,42 @@ def read_fit_params(files, line_names):
         fit_params[line_names[i]]['sigma'] = hdu_list[2].data*u.micron
 
     return fit_params
+
+
+def fitpa(vel, vel_err=None, xoff=None, yoff=None, mask=None):
+    """
+    Function to fit the kinematic position angle using fit_kinematic_pa from Michele Cappelari
+    """
+
+    from fit_kinematic_pa import fit_kinematic_pa
+
+    x, y = np.meshgrid(range(vel.shape[1]), range(vel.shape[0]))
+
+    if vel_err is None:
+        vel_err = vel*0 + 10.
+
+    if mask is None:
+        mask = np.isnan(vel)
+
+    xx = x.flatten()
+    yy = y.flatten()
+    vel_flat = vel.flatten()
+    vel_err_flat = vel_err.flatten()
+    mask_flat = mask.flatten()
+
+    xx = xx[~mask_flat]
+    yy = yy[~mask_flat]
+    vel_flat = vel_flat[~mask_flat]
+    vel_err_flat = vel_err_flat[~mask_flat]
+
+    if xoff is None:
+        xoff = vel.shape[0]/2
+    if yoff is None:
+        yoff = vel.shape[1]/2
+
+    xx = xx-xoff
+    yy = yy-yoff
+
+    angBest, angErr, vSyst = fit_kinematic_pa(xx, yy, vel_flat, dvel=vel_err_flat)
+
+    return angBest, angErr, vSyst
