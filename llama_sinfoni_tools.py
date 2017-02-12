@@ -243,7 +243,7 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
     return line_params
 
 
-def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
+def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
                      vdisp_max=300., mask=None, flux_scale='arcsinh'):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
@@ -253,36 +253,37 @@ def plot_line_params(line_params, header, vel_min=-200., vel_max=200.,
     velocity_hdu = fits.PrimaryHDU()
     veldisp_hdu = fits.PrimaryHDU()
 
-    header['WCSAXES'] = 2
-    header['NAXIS'] = 2
-    try:
-        header.remove('CDELT3')
-    except KeyError:
-        pass
-    try:
-        header.remove('CRVAL3')
-    except KeyError:
-        pass
-    try:
-        header.remove('CUNIT3')
-    except KeyError:
-        pass
-    try:
-        header.remove('CRPIX3')
-    except KeyError:
-        pass
-    try:
-        header.remove('CTYPE3')
-    except KeyError:
-        pass
+    if (header is not None):
+        header['WCSAXES'] = 2
+        header['NAXIS'] = 2
+        try:
+            header.remove('CDELT3')
+        except KeyError:
+            pass
+        try:
+            header.remove('CRVAL3')
+        except KeyError:
+            pass
+        try:
+            header.remove('CUNIT3')
+        except KeyError:
+            pass
+        try:
+            header.remove('CRPIX3')
+        except KeyError:
+            pass
+        try:
+            header.remove('CTYPE3')
+        except KeyError:
+            pass
 
-    int_flux_hdu.header = header
-    velocity_hdu.header = header
-    veldisp_hdu.header = header
+        int_flux_hdu.header = header
+        velocity_hdu.header = header
+        veldisp_hdu.header = header
 
-    int_flux_hdu.data = line_params['int_flux'].value
-    velocity_hdu.data = line_params['velocity'].value
-    veldisp_hdu.data = line_params['veldisp'].value
+    int_flux_hdu.data = line_params['int_flux'].value.copy()
+    velocity_hdu.data = line_params['velocity'].value.copy()
+    veldisp_hdu.data = line_params['veldisp'].value.copy()
 
     if mask is not None:
         int_flux_hdu.data[mask] = np.nan
