@@ -863,3 +863,39 @@ def write_files(results, header, savedir='', suffix=''):
     return 0
 
 
+def plot_specfit(cube, model, fit_params, pixel, ax=None):
+
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+    else:
+        fig = ax.figure
+
+    x, y = pixel
+    spec = cube[:, x, y]
+    waves = spec.spectral_axis.to(u.micron).value
+    flux = spec.value
+    bestfit_model = model.copy()
+    nlines = len(fit_params.keys())
+
+    for k in fit_params.keys():
+
+        if (nlines == 1):
+
+            bestfit_model.amplitude = fit_params[k]['amplitude'][x, y].value
+            bestfit_model.mean = fit_params[k]['mean'][x, y].value
+            bestfit_model.stddev = fit_params[k]['sigma'][x, y].value
+
+        else:
+
+            bestfit_model[k].amplitude = fit_params[k]['amplitude'][x, y].value
+            bestfit_model[k].mean = fit_params[k]['mean'][x, y].value
+            bestfit_model[k].stddev = fit_params[k]['sigma'][x, y].value
+
+    ax.plot(waves, flux, ls='steps-mid', color='k', lw=0.5)
+    ax.plot(waves, bestfit_model(waves), color='r', lw=1.0)
+    ax.set_xlim((np.min(waves), np.max(waves)))
+    ax.set_xlabel('Wavelength [micron]')
+    ax.set_ylabel('Flux ['+spec.unit.to_string()+']')
+
+    return fig
