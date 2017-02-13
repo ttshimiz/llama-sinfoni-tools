@@ -451,8 +451,9 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=None,
-            guess_region=None, calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
+def cubefit(cube, model, skip=None, exclude=None, line_centers=None,
+            auto_guess=False, guess_type=None, guess_region=None,
+            calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -547,7 +548,7 @@ def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=N
                         if guess_region is None:
                             guess_region = np.ones(len(spec), dtype=np.bool)
 
-                        model = findpeaks(spec, model, guess_region, line_centers)
+                        model = findpeaks(spec, lam, model, guess_region, line_centers)
 
                 fit_results = specfit(lam, spec, model, exclude=exclude,
                                       calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
@@ -700,7 +701,7 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
     return slice
 
 
-def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
+def runfit(cube, model, sn_thresh=3.0, line_centers=None, cont_exclude=None, fit_exclude=None,
            max_guess=False, auto_guess=False, guess_type=None, guess_region=None, calc_uncert=False,
            nmc=100, cores=None, parallel=False):
 
