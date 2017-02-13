@@ -1055,7 +1055,7 @@ def findpeaks(spec, lam, model, guess_region, line_centers):
     ind_peaks = peakutils.indexes(smoothed_spec[guess_region])
     peak_waves = lam[guess_region][ind_peaks]
     peak_flux = spec[guess_region][ind_peaks]
-    print ind_peaks
+
     # Sort the peaks by flux and take the top N as estimates for the lines in the model
     ind_sort = np.argsort(peak_flux)
     peak_waves_sort = peak_waves[ind_sort]
