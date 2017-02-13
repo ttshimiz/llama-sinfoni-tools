@@ -455,7 +455,7 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None,
+def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=None,
             calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
@@ -517,10 +517,10 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
 
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
-                if max_guess:
+                if auto_guess:
 
                     # Use the bounds on the line center as the guess region for each line
-                    if guess_region is 'limits':
+                    if guess_type is 'limits':
                         if hasattr(model, 'submodel_names'):
                             for k in fit_params.keys():
                                 min_lam = model[k].mean.min
