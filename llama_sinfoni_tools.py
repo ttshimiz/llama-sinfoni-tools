@@ -9,6 +9,7 @@ import numpy as np
 import astropy.units as u
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
+import astropy.convolution as apy_conv
 from astropy.stats import sigma_clipped_stats, sigma_clip
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import lines
 import multiprocessing
 import time
+import peakutils
 
 def read_data(fn, scale=True):
     """
@@ -456,7 +458,7 @@ def create_model(line_centers, amp_guess=None,
     return final_model
 
 def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=None,
-            calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
+            guess_region=None, calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
     """
@@ -501,6 +503,7 @@ def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=N
                                          'sigma': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
     print "Lines being fit: {0}".format(fit_params.keys())
+
     if calc_uncert:
         print "Calculating uncertainties using MC simulation with {0} iterations.".format(nmc)
     else:
@@ -520,7 +523,7 @@ def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=N
                 if auto_guess:
 
                     # Use the bounds on the line center as the guess region for each line
-                    if guess_type is 'limits':
+                    if guess_type == 'limits':
                         if hasattr(model, 'submodel_names'):
                             for k in fit_params.keys():
                                 min_lam = model[k].mean.min
@@ -544,6 +547,13 @@ def cubefit(cube, model, skip=None, exclude=None, auto_guess=False, guess_type=N
 
                             model.mean = wave_max
                             model.amplitude = flux_max
+
+                    elif guess_type == 'peak-find':
+
+                        if guess_region is None:
+                            guess_region = np.ones(len(spec), dtype=np.bool)
+
+                        model = findpeaks(spec, model, guess_region, line_centers)
 
                 fit_results = specfit(lam, spec, model, exclude=exclude,
                                       calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
@@ -697,7 +707,7 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
 
 
 def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
-           max_guess=False, guess_region=None, calc_uncert=False,
+           max_guess=False, auto_guess=False, guess_type=None, guess_region=None, calc_uncert=False,
            nmc=100, cores=None, parallel=False):
 
     # Subtract out the continuum
@@ -719,7 +729,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
     print 'Fitting the cube...'
     t2 = time.time()
     results = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
-                                 max_guess=max_guess, guess_region=guess_region, calc_uncert=calc_uncert,
+                                 auto_guess=auto_guess, guess_type=guess_type, guess_region=guess_region, calc_uncert=calc_uncert,
                                  rms=local_rms, nmc=nmc, cores=cores, parallel=parallel)
     t3 = time.time()
     print 'Cube successfully fit in', t3-t2, 'seconds.'
@@ -1027,3 +1037,76 @@ def find_cont_center(cube, lamrange):
     center = [best_fit.x_mean.value, best_fit.y_mean.value]
 
     return center
+
+
+def findpeaks(spec, lam, model, guess_region, line_centers):
+    """
+    Function to find the peaks in a spectral region by smoothing with a Gaussian and
+    then using a peak finding algorithm. Then use the found peaks to adjust the initial
+    guesses for the model.
+    """
+
+    # Make a copy of the model
+    mod = model.copy()
+
+    # Determine the number of lines being fit within the model
+    nlines = len(line_centers.keys())
+
+    # Smooth the spectrum with a 2 pixel wide Gaussian kernel to get rid of high frequency noise
+    gauss_kern = apy_conv.Gaussian1DKernel(2.0)
+    smoothed_spec = apy_conv.convolve(spec,gauss_kern)
+
+    # Find the peaks with peakutils
+    ind_peaks = peakutils.indexes(smoothed_spec[guess_region])
+    peak_waves = lam[guess_region][ind_peaks]
+    peak_flux = spec[guess_region][ind_peaks]
+    print ind_peaks
+    # Sort the peaks by flux and take the top N as estimates for the lines in the model
+    ind_sort = np.argsort(peak_flux)
+    peak_waves_sort = peak_waves[ind_sort]
+    peak_flux_sort = peak_flux[ind_sort]
+
+    if nlines > 1:
+        lc = np.array([line_centers[k].value for k in line_centers.keys()])
+        ln = np.array([k for k in line_centers.keys()])
+
+        # Sort the lines being fit by wavelength
+        ind_sort_lc = np.argsort(lc)
+        lc_sort = lc[ind_sort_lc]
+        ln_sort = ln[ind_sort_lc]
+
+        if len(ind_peaks) >= nlines:
+
+            peak_waves_use = peak_waves_sort[0:nlines]
+            peak_flux_use = peak_flux_sort[0:nlines]
+
+            # Now sort the useable peaks by wavelength and associate with the modeled lines
+            ind_sort_use = np.argsort(peak_waves_use)
+            peak_waves_use_sort = peak_waves_use[ind_sort_use]
+            peak_flux_use_sort = peak_flux_use[ind_sort_use]
+
+            for g, n in enumerate(ln_sort):
+
+                mod[n].mean = peak_waves_use_sort[g]
+                mod[n].amplitude = peak_flux_use_sort[g]
+
+        elif len(ind_peaks) > 0:
+
+            # Need to figure out which line each peak is associated with
+            # Use the difference between the peak wavelength and the line center
+            # Whichever line is closest to the peak is the one we'll assume the peak
+            #    is associated with.
+
+            for l, w in enumerate(peak_waves_sort):
+
+                closest_line = ln[np.argmin(np.abs(lc-w))]
+                mod[closest_line].mean = w
+                mod[closest_line].amplitude = peak_flux_sort[l]
+
+    else:
+
+        # If there is only one line then just take the strongest peak
+        mod.mean = peak_waves_sort[0]
+        mod.amplitude = peak_flux_sort[0]
+
+    return mod
