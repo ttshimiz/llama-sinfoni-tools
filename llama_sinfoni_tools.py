@@ -702,7 +702,7 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
 
 
 def runfit(cube, model, sn_thresh=3.0, line_centers=None, cont_exclude=None, fit_exclude=None,
-           max_guess=False, auto_guess=False, guess_type=None, guess_region=None, calc_uncert=False,
+           auto_guess=False, guess_type=None, guess_region=None, calc_uncert=False,
            nmc=100, cores=None, parallel=False):
 
     # Subtract out the continuum
