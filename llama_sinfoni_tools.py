@@ -181,9 +181,9 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
     line_params = {}
 
-    for i,k in enumerate(fit_params.keys()):
+    for k in fit_params.keys():
 
-        lc = line_centers[i]
+        lc = line_centers[k]
         line_params[k] = {}
         amp = fit_params[k]['amplitude']
         line_mean = fit_params[k]['mean']
@@ -368,7 +368,7 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
 def create_model(line_centers, amp_guess=None,
                  center_guess=None, width_guess=None,
                  center_limits=None, width_limits=None,
-                 center_fixed=None, width_fixed=None, line_names=None):
+                 center_fixed=None, width_fixed=None):
     """
     Function that allows for the creation of a generic model for a spectral region.
     Each line specified in 'line_names' must be included in the file 'lines.py'.
@@ -379,70 +379,64 @@ def create_model(line_centers, amp_guess=None,
     All lines are considered narrow unless the name has 'broad' attached to the end of the name.
     """
 
-    # Line_names can be a single string. If so convert it to a list
-    if type(line_centers) == u.quantity.Quantity:
-        line_centers = [line_centers]
-        line_names = [line_names]
-    nlines = len(line_centers)
+
+    nlines = len(line_centers.keys())
+    line_names = line_centers.keys()
 
     # Create the default amplitude guesses for the lines if necessary
     if amp_guess is None:
-        amp_guess = np.ones(nlines)
+        amp_guess = {l:1.0 for l in line_names}
 
     # Create arrays to hold the default line center and width guesses
     if center_guess is None:
-        center_guess = np.zeros(nlines)*u.km/u.s
+        center_guess = {l:0*u.km/u.s for l in line_names}
     if width_guess is None:
-        width_guess = np.ones(nlines)*100.*u.km/u.s
-
-    # Create default line names
-    if line_names is None:
-        line_names = ['Line '+str(i+1) for i in range(nlines)]
+        width_guess = {l:100.*u.km/u.s for l in line_names}
 
     # Loop through each line and create a model
     mods = []
     for i,l in enumerate(line_names):
 
         # Equivalency to convert to/from wavelength from/to velocity
-        opt_conv = u.doppler_optical(line_centers[i])
+        opt_conv = u.doppler_optical(line_centers[l])
 
         # Convert the guesses for the line center and width to micron
-        center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
-        if u.get_physical_type(width_guess.unit) == 'speed':
-            width_guess_i = width_guess[i].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
-        elif u.get_physical_type(width_guess.unit) == 'length':
+        center_guess_i = center_guess[l].to(u.micron, equivalencies=opt_conv)
+        if u.get_physical_type(width_guess[l].unit) == 'speed':
+            width_guess_i = width_guess[l].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
+        elif u.get_physical_type(width_guess[l].unit) == 'length':
             width_guess_i = width_guess[i].to(u.micron)
         center_guess_i = center_guess_i.value
         width_guess_i = width_guess_i.value
 
         # Create the single Gaussian line model for the emission line
-        mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[i],
+        mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[l],
                                                stddev=width_guess_i, name=l)
 
         # Set the constraints on the parameters if necessary
         mod_single.amplitude.min = 0      # always an emission line
 
         if center_limits is not None:
-            if center_limits[i][0] is not None:
-                mod_single.mean.min = center_limits[i][0].to(u.micron, equivalencies=opt_conv).value
-            if center_limits[i][1] is not None:
-                mod_single.mean.max = center_limits[i][1].to(u.micron, equivalencies=opt_conv).value
+            if center_limits[l][0] is not None:
+                mod_single.mean.min = center_limits[l][0].to(u.micron, equivalencies=opt_conv).value
+            if center_limits[l][1] is not None:
+                mod_single.mean.max = center_limits[l][1].to(u.micron, equivalencies=opt_conv).value
 
         if width_limits is not None:
-            if width_limits[i][0] is not None:
-                mod_single.stddev.min = width_limits[i][0].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
+            if width_limits[l][0] is not None:
+                mod_single.stddev.min = width_limits[l][0].to(u.micron, equivalencies=opt_conv).value - line_centers[l].value
             else:
                 mod_single.stddev.min = 0         # can't have negative width
-            if width_limits[i][1] is not None:
-                mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
+            if width_limits[l][1] is not None:
+                mod_single.stddev.max = width_limits[l][1].to(u.micron, equivalencies=opt_conv).value - line_centers[l].value
         else:
             mod_single.stddev.min = 0
 
         # Set the fixed parameters
         if center_fixed is not None:
-            mod_single.mean.fixed = center_fixed[i]
+            mod_single.mean.fixed = center_fixed[l]
         if width_fixed is not None:
-            mod_single.stddev.fixed = width_fixed[i]
+            mod_single.stddev.fixed = width_fixed[l]
 
         # Add to the model list
         mods.append(mod_single)
@@ -728,7 +722,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
 
     print 'Fitting the cube...'
     t2 = time.time()
-    results = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
+    results = cubefit(cube_cont_remove, model, skip=skippix, line_centers=line_centers, exclude=fit_exclude,
                                  auto_guess=auto_guess, guess_type=guess_type, guess_region=guess_region, calc_uncert=calc_uncert,
                                  rms=local_rms, nmc=nmc, cores=cores, parallel=parallel)
     t3 = time.time()
