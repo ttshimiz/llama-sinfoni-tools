@@ -657,7 +657,7 @@ def specfit_single(x, fx, model):
 
     return modfit
 
-def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
+def skip_pixels(cube, rms, sn_thresh=3.0, spec_use=None):
     """
     Function to determine which pixels to skip based on a user defined S/N threshold.
     Returns an NxM boolean array where True indicates a pixel to skip.
@@ -665,7 +665,7 @@ def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
     If the maximum value is a NaN then that pixel is also skipped.
     """
 
-    if exclude is None:
+    if spec_use is None:
         spec_max = cube.max(axis=0)
         sig_to_noise = spec_max/rms
         skip = (sig_to_noise.value < sn_thresh) | (np.isnan(sig_to_noise.value))
@@ -677,7 +677,7 @@ def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
         for x in range(xsize):
             for y in range(ysize):
                 s = cube[:,x,y]
-                s_n = np.max(s[~exclude])/rms[x,y]
+                s_n = np.max(s[spec_use])/rms[x,y]
                 skip[x,y] = (s_n.value < sn_thresh) | (np.isnan(s_n.value))
 
 
@@ -718,7 +718,7 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
 
     # Create a mask of pixels to skip in the fitting
     print 'Creating a mask to skip model fitting for spaxels with S/N <', sn_thresh
-    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
+    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, spec_use=guess_region)
 
     print 'Fitting the cube...'
     t2 = time.time()
