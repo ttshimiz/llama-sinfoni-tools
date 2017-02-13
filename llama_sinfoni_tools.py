@@ -518,18 +518,32 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
                 if max_guess:
-                    if guess_region is None:
-                         guess_region = np.ones(len(spec), dtype=np.bool)
-                    ind_max = np.argmax(spec[guess_region])
-                    wave_max = lam[guess_region][ind_max]
-                    flux_max = spec[guess_region][ind_max]
 
-                    if hasattr(model, 'submodel_names'):
-                        model.amplitude_0 = flux_max
-                        model.mean_0 = wave_max
-                    else:
-                        model.amplitude = flux_max
-                        model.mean = wave_max
+                    # Use the bounds on the line center as the guess region for each line
+                    if guess_region is 'limits':
+                        if hasattr(model, 'submodel_names'):
+                            for k in fit_params.keys():
+                                min_lam = model[k].mean.min
+                                max_lam = model[k].mean.max
+                                guess_region_line = (lam >= min_lam) & (lam <= max_lam)
+
+                                ind_max = np.argmax(spec[guess_region_line])
+                                wave_max = lam[guess_region_line][ind_max]
+                                flux_max = spec[guess_region_line][ind_max]
+
+                                model[k].mean = wave_max
+                                model[k].amplitude = flux_max
+                        else:
+                            min_lam = model.mean.min
+                            max_lam = model.mean.max
+                            guess_region_line = (lam >= min_lam) & (lam <= max_lam)
+
+                            ind_max = np.argmax(spec[guess_region_line])
+                            wave_max = lam[guess_region_line][ind_max]
+                            flux_max = spec[guess_region_line][ind_max]
+
+                            model.mean = wave_max
+                            model.amplitude = flux_max
 
                 fit_results = specfit(lam, spec, model, exclude=exclude,
                                       calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
