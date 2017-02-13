@@ -220,7 +220,7 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
         # Subtract off instrumental broadening
         phys_veldisp = np.sqrt(veldisp**2 - inst_broad**2)
-        phys_veldisp[veldisp < inst_broad] = inst_broad
+        phys_veldisp[veldisp < inst_broad] = 0.*u.km/u.s
 
         line_params[k]['veldisp'] = phys_veldisp
 
@@ -988,3 +988,28 @@ def fitpa(vel, vel_err=None, xoff=None, yoff=None, mask=None):
     angBest, angErr, vSyst = fit_kinematic_pa(xx, yy, vel_flat, dvel=vel_err_flat)
 
     return angBest, angErr, vSyst
+
+
+def find_cont_center(cube, lamrange):
+    """
+    Function to fit a 2D Gaussian to the image of a user-defined continuum
+    """
+
+    slice = cube.spectral_slab(lamrange[0], lamrange[1])
+    int = slice.moment(0)   # Zeroth moment is just the integral along the spectrum
+    img = int.value/np.nanmean(int.value)
+    xx, yy = np.meshgrid(range(img.shape[1]), range(img.shape[0]))
+    guess_x = img.shape[1]/2
+    guess_y = img.shape[0]/2
+    img_cut = img[guess_y-15:guess_y+15, guess_x-15:guess_x+15]
+    xx_cut = xx[guess_y-15:guess_y+15, guess_x-15:guess_x+15]
+    yy_cut = yy[guess_y-15:guess_y+15, guess_x-15:guess_x+15]
+    gauss_mod = apy_mod.models.Gaussian2D(x_mean=guess_x, y_mean=guess_y,
+                                          x_stddev=3.0, y_stddev=3.0)
+    fitter = apy_mod.fitting.LevMarLSQFitter()
+
+    best_fit = fitter(gauss_mod, xx_cut, yy_cut, img_cut)
+
+    center = [best_fit.x_mean.value, best_fit.y_mean.value]
+
+    return center
