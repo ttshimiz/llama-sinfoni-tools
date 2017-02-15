@@ -504,6 +504,7 @@ def cubefit(cube, model, skip=None, exclude=None, line_centers=None,
     else:
         print "No calculation of uncertainties."
     print "Starting fitting..."
+
     for i in range(xsize):
         for j in range(ysize):
 
@@ -589,6 +590,7 @@ def cubefit(cube, model, skip=None, exclude=None, line_centers=None,
                         fit_params_mc[model.name]['sigma'][:,i,j] = mc_sig*spec_ax_unit
 
                 residuals[:,i,j] = (spec - best_fit(spec_ax.to(u.micron).value))*10**(-17)
+
             else:
                 print "Pixel {0},{1} skipped.".format(i,j)
                 residuals[:,i,j] = spec*10**(-17)
@@ -638,7 +640,7 @@ def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100,
 
 def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
 
-    pool = multiprocessing.Pool(cores)
+    pool = multiprocessing.Pool(processes=cores)
 
     mc_spec = np.zeros((nmc, len(fx)))
     for i in range(nmc):
@@ -647,6 +649,7 @@ def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
     result = [p.get() for p in result]
 
     pool.close()
+    pool.join()
 
     return result
 
@@ -1057,7 +1060,8 @@ def findpeaks(spec, lam, model, guess_region, line_centers):
     peak_flux = spec[guess_region][ind_peaks]
 
     # Sort the peaks by flux and take the top N as estimates for the lines in the model
-    ind_sort = np.argsort(peak_flux)
+    # Need to sort in descending order so I use the negative of the peak fluxes
+    ind_sort = np.argsort(-peak_flux)
     peak_waves_sort = peak_waves[ind_sort]
     peak_flux_sort = peak_flux[ind_sort]
 
