@@ -246,7 +246,7 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
 
 def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
-                     vdisp_max=300., mask=None, flux_scale='arcsinh'):
+                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh'):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -302,7 +302,10 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
     #vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     #vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
-    ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
+    if flux_max is None:
+        flux_max = np.nanmax(int_flux_hdu.data)
+
+    ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-flux_max/1000., vmax=flux_max)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
     ax_vdp.show_colorscale(cmap='inferno', vmin=0, vmax=vdisp_max)
 
