@@ -9,6 +9,7 @@ import numpy as np
 import astropy.units as u
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
+import astropy.convolution as apy_conv
 from astropy.stats import sigma_clipped_stats, sigma_clip
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
@@ -17,6 +18,7 @@ import matplotlib.pyplot as plt
 import lines
 import multiprocessing
 import time
+import peakutils
 
 def read_data(fn, scale=True):
     """
@@ -179,9 +181,9 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
     line_params = {}
 
-    for i,k in enumerate(fit_params.keys()):
+    for k in fit_params.keys():
 
-        lc = line_centers[i]
+        lc = line_centers[k]
         line_params[k] = {}
         amp = fit_params[k]['amplitude']
         line_mean = fit_params[k]['mean']
@@ -244,7 +246,7 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
 
 def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
-                     vdisp_max=300., mask=None, flux_scale='arcsinh'):
+                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh'):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -300,7 +302,10 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
     #vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
     #vdp_mn, vdp_med, vdp_sig = sigma_clipped_stats(line_params['veldisp'].value, iters=100)
 
-    ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-np.nanmax(int_flux_hdu.data)/1000.)
+    if flux_max is None:
+        flux_max = np.nanmax(int_flux_hdu.data)
+
+    ax_int.show_colorscale(cmap='cubehelix', stretch=flux_scale, vmin=0, vmid=-flux_max/1000., vmax=flux_max)
     ax_vel.show_colorscale(cmap='RdBu_r', vmin=vel_min, vmax=vel_max)
     ax_vdp.show_colorscale(cmap='inferno', vmin=0, vmax=vdisp_max)
 
@@ -366,7 +371,7 @@ def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
 def create_model(line_centers, amp_guess=None,
                  center_guess=None, width_guess=None,
                  center_limits=None, width_limits=None,
-                 center_fixed=None, width_fixed=None, line_names=None):
+                 center_fixed=None, width_fixed=None):
     """
     Function that allows for the creation of a generic model for a spectral region.
     Each line specified in 'line_names' must be included in the file 'lines.py'.
@@ -377,70 +382,64 @@ def create_model(line_centers, amp_guess=None,
     All lines are considered narrow unless the name has 'broad' attached to the end of the name.
     """
 
-    # Line_names can be a single string. If so convert it to a list
-    if type(line_centers) == u.quantity.Quantity:
-        line_centers = [line_centers]
-        line_names = [line_names]
-    nlines = len(line_centers)
+
+    nlines = len(line_centers.keys())
+    line_names = line_centers.keys()
 
     # Create the default amplitude guesses for the lines if necessary
     if amp_guess is None:
-        amp_guess = np.ones(nlines)
+        amp_guess = {l:1.0 for l in line_names}
 
     # Create arrays to hold the default line center and width guesses
     if center_guess is None:
-        center_guess = np.zeros(nlines)*u.km/u.s
+        center_guess = {l:0*u.km/u.s for l in line_names}
     if width_guess is None:
-        width_guess = np.ones(nlines)*100.*u.km/u.s
-
-    # Create default line names
-    if line_names is None:
-        line_names = ['Line '+str(i+1) for i in range(nlines)]
+        width_guess = {l:100.*u.km/u.s for l in line_names}
 
     # Loop through each line and create a model
     mods = []
     for i,l in enumerate(line_names):
 
         # Equivalency to convert to/from wavelength from/to velocity
-        opt_conv = u.doppler_optical(line_centers[i])
+        opt_conv = u.doppler_optical(line_centers[l])
 
         # Convert the guesses for the line center and width to micron
-        center_guess_i = center_guess[i].to(u.micron, equivalencies=opt_conv)
-        if u.get_physical_type(width_guess.unit) == 'speed':
-            width_guess_i = width_guess[i].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
-        elif u.get_physical_type(width_guess.unit) == 'length':
+        center_guess_i = center_guess[l].to(u.micron, equivalencies=opt_conv)
+        if u.get_physical_type(width_guess[l].unit) == 'speed':
+            width_guess_i = width_guess[l].to(u.micron, equivalencies=u.doppler_optical(center_guess_i)) - center_guess_i
+        elif u.get_physical_type(width_guess[l].unit) == 'length':
             width_guess_i = width_guess[i].to(u.micron)
         center_guess_i = center_guess_i.value
         width_guess_i = width_guess_i.value
 
         # Create the single Gaussian line model for the emission line
-        mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[i],
+        mod_single = apy_mod.models.Gaussian1D(mean=center_guess_i, amplitude=amp_guess[l],
                                                stddev=width_guess_i, name=l)
 
         # Set the constraints on the parameters if necessary
         mod_single.amplitude.min = 0      # always an emission line
 
         if center_limits is not None:
-            if center_limits[i][0] is not None:
-                mod_single.mean.min = center_limits[i][0].to(u.micron, equivalencies=opt_conv).value
-            if center_limits[i][1] is not None:
-                mod_single.mean.max = center_limits[i][1].to(u.micron, equivalencies=opt_conv).value
+            if center_limits[l][0] is not None:
+                mod_single.mean.min = center_limits[l][0].to(u.micron, equivalencies=opt_conv).value
+            if center_limits[l][1] is not None:
+                mod_single.mean.max = center_limits[l][1].to(u.micron, equivalencies=opt_conv).value
 
         if width_limits is not None:
-            if width_limits[i][0] is not None:
-                mod_single.stddev.min = width_limits[i][0].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
+            if width_limits[l][0] is not None:
+                mod_single.stddev.min = width_limits[l][0].to(u.micron, equivalencies=opt_conv).value - line_centers[l].value
             else:
                 mod_single.stddev.min = 0         # can't have negative width
-            if width_limits[i][1] is not None:
-                mod_single.stddev.max = width_limits[i][1].to(u.micron, equivalencies=opt_conv).value - line_centers[i].value
+            if width_limits[l][1] is not None:
+                mod_single.stddev.max = width_limits[l][1].to(u.micron, equivalencies=opt_conv).value - line_centers[l].value
         else:
             mod_single.stddev.min = 0
 
         # Set the fixed parameters
         if center_fixed is not None:
-            mod_single.mean.fixed = center_fixed[i]
+            mod_single.mean.fixed = center_fixed[l]
         if width_fixed is not None:
-            mod_single.stddev.fixed = width_fixed[i]
+            mod_single.stddev.fixed = width_fixed[l]
 
         # Add to the model list
         mods.append(mod_single)
@@ -455,7 +454,8 @@ def create_model(line_centers, amp_guess=None,
 
     return final_model
 
-def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=None,
+def cubefit(cube, model, skip=None, exclude=None, line_centers=None,
+            auto_guess=False, guess_type=None, guess_region=None,
             calc_uncert=False, nmc=100., rms=None, parallel=False, cores=None):
     """
     Function to loop through all of the spectra in a cube and fit a model.
@@ -501,11 +501,13 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                                          'sigma': np.zeros((nmc, xsize, ysize))*spec_ax_unit*np.nan}
 
     print "Lines being fit: {0}".format(fit_params.keys())
+
     if calc_uncert:
         print "Calculating uncertainties using MC simulation with {0} iterations.".format(nmc)
     else:
         print "No calculation of uncertainties."
     print "Starting fitting..."
+
     for i in range(xsize):
         for j in range(ysize):
 
@@ -517,19 +519,40 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
 
             if (np.any(~np.isnan(spec)) & ~skip[i, j]):
 
-                if max_guess:
-                    if guess_region is None:
-                         guess_region = np.ones(len(spec), dtype=np.bool)
-                    ind_max = np.argmax(spec[guess_region])
-                    wave_max = lam[guess_region][ind_max]
-                    flux_max = spec[guess_region][ind_max]
+                if auto_guess:
 
-                    if hasattr(model, 'submodel_names'):
-                        model.amplitude_0 = flux_max
-                        model.mean_0 = wave_max
-                    else:
-                        model.amplitude = flux_max
-                        model.mean = wave_max
+                    # Use the bounds on the line center as the guess region for each line
+                    if guess_type == 'limits':
+                        if hasattr(model, 'submodel_names'):
+                            for k in fit_params.keys():
+                                min_lam = model[k].mean.min
+                                max_lam = model[k].mean.max
+                                guess_region_line = (lam >= min_lam) & (lam <= max_lam)
+
+                                ind_max = np.argmax(spec[guess_region_line])
+                                wave_max = lam[guess_region_line][ind_max]
+                                flux_max = spec[guess_region_line][ind_max]
+
+                                model[k].mean = wave_max
+                                model[k].amplitude = flux_max
+                        else:
+                            min_lam = model.mean.min
+                            max_lam = model.mean.max
+                            guess_region_line = (lam >= min_lam) & (lam <= max_lam)
+
+                            ind_max = np.argmax(spec[guess_region_line])
+                            wave_max = lam[guess_region_line][ind_max]
+                            flux_max = spec[guess_region_line][ind_max]
+
+                            model.mean = wave_max
+                            model.amplitude = flux_max
+
+                    elif guess_type == 'peak-find':
+
+                        if guess_region is None:
+                            guess_region = np.ones(len(spec), dtype=np.bool)
+
+                        model = findpeaks(spec, lam, model, guess_region, line_centers)
 
                 fit_results = specfit(lam, spec, model, exclude=exclude,
                                       calc_uncert=calc_uncert, nmc=nmc, rms=rms_i,
@@ -570,6 +593,7 @@ def cubefit(cube, model, skip=None, exclude=None, max_guess=False, guess_region=
                         fit_params_mc[model.name]['sigma'][:,i,j] = mc_sig*spec_ax_unit
 
                 residuals[:,i,j] = (spec - best_fit(spec_ax.to(u.micron).value))*10**(-17)
+
             else:
                 print "Pixel {0},{1} skipped.".format(i,j)
                 residuals[:,i,j] = spec*10**(-17)
@@ -619,7 +643,7 @@ def specfit(x, fx, model, exclude=None, calc_uncert=False, rms=None, nmc=100,
 
 def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
 
-    pool = multiprocessing.Pool(cores)
+    pool = multiprocessing.Pool(processes=cores)
 
     mc_spec = np.zeros((nmc, len(fx)))
     for i in range(nmc):
@@ -628,6 +652,7 @@ def specfit_parallel(x, fx, model, rms, nmc=100, cores=None):
     result = [p.get() for p in result]
 
     pool.close()
+    pool.join()
 
     return result
 
@@ -639,7 +664,7 @@ def specfit_single(x, fx, model):
 
     return modfit
 
-def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
+def skip_pixels(cube, rms, sn_thresh=3.0, spec_use=None):
     """
     Function to determine which pixels to skip based on a user defined S/N threshold.
     Returns an NxM boolean array where True indicates a pixel to skip.
@@ -647,7 +672,7 @@ def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
     If the maximum value is a NaN then that pixel is also skipped.
     """
 
-    if exclude is None:
+    if spec_use is None:
         spec_max = cube.max(axis=0)
         sig_to_noise = spec_max/rms
         skip = (sig_to_noise.value < sn_thresh) | (np.isnan(sig_to_noise.value))
@@ -659,7 +684,7 @@ def skip_pixels(cube, rms, sn_thresh=3.0, exclude=None):
         for x in range(xsize):
             for y in range(ysize):
                 s = cube[:,x,y]
-                s_n = np.max(s[~exclude])/rms[x,y]
+                s_n = np.max(s[spec_use])/rms[x,y]
                 skip[x,y] = (s_n.value < sn_thresh) | (np.isnan(s_n.value))
 
 
@@ -682,8 +707,8 @@ def prepare_cube(cube, slice_center, velrange=[-4000., 4000.]*u.km/u.s):
     return slice
 
 
-def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
-           max_guess=False, guess_region=None, calc_uncert=False,
+def runfit(cube, model, sn_thresh=3.0, line_centers=None, cont_exclude=None, fit_exclude=None,
+           auto_guess=False, guess_type=None, guess_region=None, calc_uncert=False,
            nmc=100, cores=None, parallel=False):
 
     # Subtract out the continuum
@@ -700,12 +725,12 @@ def runfit(cube, model, sn_thresh=3.0, cont_exclude=None, fit_exclude=None,
 
     # Create a mask of pixels to skip in the fitting
     print 'Creating a mask to skip model fitting for spaxels with S/N <', sn_thresh
-    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, exclude=fit_exclude)
+    skippix = skip_pixels(cube_cont_remove, local_rms, sn_thresh=sn_thresh, spec_use=guess_region)
 
     print 'Fitting the cube...'
     t2 = time.time()
-    results = cubefit(cube_cont_remove, model, skip=skippix, exclude=fit_exclude,
-                                 max_guess=max_guess, guess_region=guess_region, calc_uncert=calc_uncert,
+    results = cubefit(cube_cont_remove, model, skip=skippix, line_centers=line_centers, exclude=fit_exclude,
+                                 auto_guess=auto_guess, guess_type=guess_type, guess_region=guess_region, calc_uncert=calc_uncert,
                                  rms=local_rms, nmc=nmc, cores=cores, parallel=parallel)
     t3 = time.time()
     print 'Cube successfully fit in', t3-t2, 'seconds.'
@@ -1013,3 +1038,77 @@ def find_cont_center(cube, lamrange):
     center = [best_fit.x_mean.value, best_fit.y_mean.value]
 
     return center
+
+
+def findpeaks(spec, lam, model, guess_region, line_centers):
+    """
+    Function to find the peaks in a spectral region by smoothing with a Gaussian and
+    then using a peak finding algorithm. Then use the found peaks to adjust the initial
+    guesses for the model.
+    """
+
+    # Make a copy of the model
+    mod = model.copy()
+
+    # Determine the number of lines being fit within the model
+    nlines = len(line_centers.keys())
+
+    # Smooth the spectrum with a 2 pixel wide Gaussian kernel to get rid of high frequency noise
+    gauss_kern = apy_conv.Gaussian1DKernel(2.0)
+    smoothed_spec = apy_conv.convolve(spec,gauss_kern)
+
+    # Find the peaks with peakutils
+    ind_peaks = peakutils.indexes(smoothed_spec[guess_region])
+    peak_waves = lam[guess_region][ind_peaks]
+    peak_flux = spec[guess_region][ind_peaks]
+
+    # Sort the peaks by flux and take the top N as estimates for the lines in the model
+    # Need to sort in descending order so I use the negative of the peak fluxes
+    ind_sort = np.argsort(-peak_flux)
+    peak_waves_sort = peak_waves[ind_sort]
+    peak_flux_sort = peak_flux[ind_sort]
+
+    if nlines > 1:
+        lc = np.array([line_centers[k].value for k in line_centers.keys()])
+        ln = np.array([k for k in line_centers.keys()])
+
+        # Sort the lines being fit by wavelength
+        ind_sort_lc = np.argsort(lc)
+        lc_sort = lc[ind_sort_lc]
+        ln_sort = ln[ind_sort_lc]
+
+        if len(ind_peaks) >= nlines:
+
+            peak_waves_use = peak_waves_sort[0:nlines]
+            peak_flux_use = peak_flux_sort[0:nlines]
+
+            # Now sort the useable peaks by wavelength and associate with the modeled lines
+            ind_sort_use = np.argsort(peak_waves_use)
+            peak_waves_use_sort = peak_waves_use[ind_sort_use]
+            peak_flux_use_sort = peak_flux_use[ind_sort_use]
+
+            for g, n in enumerate(ln_sort):
+
+                mod[n].mean = peak_waves_use_sort[g]
+                mod[n].amplitude = peak_flux_use_sort[g]
+
+        elif len(ind_peaks) > 0:
+
+            # Need to figure out which line each peak is associated with
+            # Use the difference between the peak wavelength and the line center
+            # Whichever line is closest to the peak is the one we'll assume the peak
+            #    is associated with.
+
+            for l, w in enumerate(peak_waves_sort):
+
+                closest_line = ln[np.argmin(np.abs(lc-w))]
+                mod[closest_line].mean = w
+                mod[closest_line].amplitude = peak_flux_sort[l]
+
+    else:
+
+        # If there is only one line then just take the strongest peak
+        mod.mean = peak_waves_sort[0]
+        mod.amplitude = peak_flux_sort[0]
+
+    return mod
