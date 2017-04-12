@@ -1042,7 +1042,7 @@ def fitpa(vel, vel_err=None, xoff=None, yoff=None, mask=None):
     return angBest, angErr, vSyst
 
 
-def find_cont_center(cube, lamrange):
+def find_cont_center(cube, lamrange, plot=False):
     """
     Function to fit a 2D Gaussian to the image of a user-defined continuum
     """
@@ -1064,7 +1064,28 @@ def find_cont_center(cube, lamrange):
 
     center = [best_fit.x_mean.value, best_fit.y_mean.value]
 
-    return center
+    if plot:
+        hdu = fits.PrimaryHDU(data=int.value, header=int.header)
+        fig = aplpy.FITSFigure(hdu)
+        fig.show_colorscale(cmap='cubehelix', stretch='linear')
+        ra, dec = fig.pixel2world(center[0]+1, center[1]+1)
+        fig.show_markers(ra, dec, marker='+', c='k', s=100, lw=1.0)
+        fig.show_colorbar()
+        fig.add_label(0.05, 0.95,
+                     'Continuum = {0:0.3f} - {1:0.3f} micron'.format(lamrange[0].value, lamrange[1].value),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+        fig.add_label(0.05, 0.90,
+                     'Pixel = [{0:0.2f},{1:0.2f}]'.format(center[0], center[1]),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+        fig.add_label(0.05, 0.85,
+                     'RA, DEC = [{0:0.4f},{1:0.4f}]'.format(ra, dec),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+
+        return center, fig
+
+    else:
+
+        return center
 
 
 def findpeaks(spec, lam, model, guess_region, line_centers):
