@@ -6,10 +6,13 @@ Created on Fri Nov 18 15:56:56 2016
 """
 
 import numpy as np
+import pandas as pd
 import astropy.units as u
+import astropy.constants as c
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
 import astropy.convolution as apy_conv
+import astropy.coordinates as apy_coord
 from astropy.stats import sigma_clipped_stats, sigma_clip
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
@@ -19,6 +22,8 @@ import lines
 import multiprocessing
 import time
 import peakutils
+
+HOME = '/Users/ttshimiz/'
 
 def read_data(fn, scale=True):
     """
@@ -1112,3 +1117,17 @@ def findpeaks(spec, lam, model, guess_region, line_centers):
         mod.amplitude = peak_flux_sort[0]
 
     return mod
+
+
+def get_redshift(name):
+
+    proj_dir = HOME+'Dropbox/Research/LLAMA/projects/SINFONI_NIR_Emission/'
+    vsys = pd.read_table(proj_dir+'stellar_V_sys.dat', delim_whitespace=True, header=None,
+                         names=['Name', 'vsysCO', 'vsysOpt', 'vsysRadio'],
+                         comment='#', index_col=0)
+
+    z = np.exp(vsys.loc[name, 'vsysCO']/c.c.to(u.km/u.s).value) - 1
+
+    return z
+
+
