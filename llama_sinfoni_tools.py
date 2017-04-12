@@ -6,10 +6,13 @@ Created on Fri Nov 18 15:56:56 2016
 """
 
 import numpy as np
+import pandas as pd
 import astropy.units as u
+import astropy.constants as c
 import astropy.io.fits as fits
 import astropy.modeling as apy_mod
 import astropy.convolution as apy_conv
+import astropy.coordinates as apy_coord
 from astropy.stats import sigma_clipped_stats, sigma_clip
 from astropy.wcs import WCS
 from spectral_cube import SpectralCube
@@ -19,6 +22,8 @@ import lines
 import multiprocessing
 import time
 import peakutils
+
+HOME = '/Users/ttshimiz/'
 
 def read_data(fn, scale=True):
     """
@@ -246,7 +251,8 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
 
 def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
-                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh'):
+                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh',
+                     subplots=True):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -292,11 +298,23 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
         velocity_hdu.data[mask] = np.nan
         veldisp_hdu.data[mask] = np.nan
 
-    fig = plt.figure(figsize=(18,6))
+    if subplots:
 
-    ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
-    ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
-    ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
+        fig = plt.figure(figsize=(18,6))
+
+        ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
+        ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
+        ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
+
+    else:
+
+        fig_int = plt.figure(figsize=(6,6))
+        fig_vel = plt.figure(figsize=(6,6))
+        fig_vdp = plt.figure(figsize=(6,6))
+
+        ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig_int)
+        ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig_vel)
+        ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig_vdp)
 
     #int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value, iters=100)
     #vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
@@ -322,14 +340,23 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
     ax_vdp.colorbar.set_axis_label_text(r'$\sigma_{\rm v}$ [km s$^{-1}$]')
 
     ax_int.set_axis_labels_ydisp(-30)
-    ax_vel.hide_yaxis_label()
-    ax_vel.hide_ytick_labels()
-    ax_vdp.hide_yaxis_label()
-    ax_vdp.hide_ytick_labels()
 
-    fig.subplots_adjust(wspace=0.3)
+    if subplots:
+        ax_vel.hide_yaxis_label()
+        ax_vel.hide_ytick_labels()
+        ax_vdp.hide_yaxis_label()
+        ax_vdp.hide_ytick_labels()
+    else:
+        ax_vel.set_axis_labels_ydisp(-30)
+        ax_vdp.set_axis_labels_ydisp(-30)
 
-    return fig, [ax_int, ax_vel, ax_vdp]
+    if subplots:
+        fig.subplots_adjust(wspace=0.3)
+
+        return fig, [ax_int, ax_vel, ax_vdp]
+
+    else:
+        return [fig_int, fig_vel, fig_vdp], [ax_int, ax_vel, ax_vdp]
 
 
 def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
@@ -1015,7 +1042,7 @@ def fitpa(vel, vel_err=None, xoff=None, yoff=None, mask=None):
     return angBest, angErr, vSyst
 
 
-def find_cont_center(cube, lamrange):
+def find_cont_center(cube, lamrange, plot=False):
     """
     Function to fit a 2D Gaussian to the image of a user-defined continuum
     """
@@ -1037,7 +1064,28 @@ def find_cont_center(cube, lamrange):
 
     center = [best_fit.x_mean.value, best_fit.y_mean.value]
 
-    return center
+    if plot:
+        hdu = fits.PrimaryHDU(data=int.value, header=int.header)
+        fig = aplpy.FITSFigure(hdu)
+        fig.show_colorscale(cmap='cubehelix', stretch='linear')
+        ra, dec = fig.pixel2world(center[0]+1, center[1]+1)
+        fig.show_markers(ra, dec, marker='+', c='k', s=100, lw=1.0)
+        fig.show_colorbar()
+        fig.add_label(0.05, 0.95,
+                     'Continuum = {0:0.3f} - {1:0.3f} micron'.format(lamrange[0].value, lamrange[1].value),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+        fig.add_label(0.05, 0.90,
+                     'Pixel = [{0:0.2f},{1:0.2f}]'.format(center[0], center[1]),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+        fig.add_label(0.05, 0.85,
+                     'RA, DEC = [{0:0.4f},{1:0.4f}]'.format(ra, dec),
+                     relative=True, color='r', size=14, horizontalalignment='left')
+
+        return center, fig
+
+    else:
+
+        return center
 
 
 def findpeaks(spec, lam, model, guess_region, line_centers):
@@ -1112,3 +1160,67 @@ def findpeaks(spec, lam, model, guess_region, line_centers):
         mod.amplitude = peak_flux_sort[0]
 
     return mod
+
+
+def get_redshift(name):
+
+    proj_dir = HOME+'Dropbox/Research/LLAMA/projects/SINFONI_NIR_Emission/'
+    vsys = pd.read_table(proj_dir+'stellar_V_sys.dat', delim_whitespace=True, header=None,
+                         names=['Name', 'vsysCO', 'vsysOpt', 'vsysRadio'],
+                         comment='#', index_col=0)
+
+    z = np.exp(vsys.loc[name, 'vsysCO']/c.c.to(u.km/u.s).value) - 1
+
+    return z
+
+
+def calc_pixel_distance(header, center_coord):
+    """Function to calculate the distance of each pixel from the central coordinate (center_coord).
+
+    header = astropy.io.fits Header object for the cube or image. Must contain valid WCS keywords
+    center_coord = astropy.coordinates.SkyCoord object with the RA and DEC of the position
+                   that each pixel's distance from will be calculated.
+    """
+
+    # Setup the arrays for the pixel X and Y positions
+    nx = header['NAXIS1']
+    ny = header['NAXIS2']
+    xx, yy = np.meshgrid(range(nx), range(ny))
+
+    # Setup the WCS object, remove the third axis if it exists
+    if header['NAXIS'] == 3:
+        header['NAXIS'] = 2
+        header['WCSAXES'] = 2
+        header.remove('NAXIS3')
+        header.remove('CRPIX3')
+        header.remove('CDELT3')
+        header.remove('CUNIT3')
+        header.remove('CTYPE3')
+        header.remove('CRVAL3')
+
+    dummy_wcs = WCS(header)
+
+    # Convert the pixel positions to RA and DEC
+    ras, decs = dummy_wcs.all_pix2world(xx, yy, 0)
+    world_coords = apy_coord.SkyCoord(ra=ras*u.deg, dec=decs*u.deg, frame='fk5')
+
+    # Calculate the separation
+    seps = center_coord.separation(world_coords).to(u.arcsec)
+
+    # Calculate the position angle using just the pixel position
+    # Need to convert the center position to pixels
+    centerx, centery = dummy_wcs.all_world2pix(center_coord.ra, center_coord.dec, 0)
+
+    dx = xx - centerx
+    dy = yy - centery
+
+    #ind1 = (dy > 0)
+    #ind2 = (dy < 0)
+    #ind3 = (dx > 0) & (dy > 0)
+
+    #pa = np.zeros(dx.shape)
+    pa = -np.arctan(dx/dy)*180./np.pi
+    #pa[ind2] = -np.arctan(dx[ind2]/dy[ind2])*180./np.pi
+    #pa[ind3] = 360.-np.arctan(dx[ind3]/dy[ind3])*180./np.pi
+
+    return seps, pa
