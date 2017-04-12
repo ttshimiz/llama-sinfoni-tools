@@ -251,7 +251,8 @@ def calc_line_params(fit_params, line_centers, fit_params_mc=None, inst_broad=0)
 
 
 def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
-                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh'):
+                     vdisp_max=300., flux_max=None, mask=None, flux_scale='arcsinh',
+                     subplots=True):
     """
     Function to plot the line intensity, velocity, and velocity dispersion in one figure
     """
@@ -297,11 +298,23 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
         velocity_hdu.data[mask] = np.nan
         veldisp_hdu.data[mask] = np.nan
 
-    fig = plt.figure(figsize=(18,6))
+    if subplots:
 
-    ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
-    ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
-    ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
+        fig = plt.figure(figsize=(18,6))
+
+        ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig, subplot=(1,3,1))
+        ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig, subplot=(1,3,2))
+        ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig, subplot=(1,3,3))
+
+    else:
+
+        fig_int = plt.figure(figsize=(6,6))
+        fig_vel = plt.figure(figsize=(6,6))
+        fig_vdp = plt.figure(figsize=(6,6))
+
+        ax_int = aplpy.FITSFigure(int_flux_hdu, figure=fig_int)
+        ax_vel = aplpy.FITSFigure(velocity_hdu, figure=fig_vel)
+        ax_vdp = aplpy.FITSFigure(veldisp_hdu, figure=fig_vdp)
 
     #int_mn, int_med, int_sig = sigma_clipped_stats(line_params['int_flux'].value, iters=100)
     #vel_mn, vel_med, vel_sig = sigma_clipped_stats(line_params['velocity'].value[np.abs(line_params['velocity'].value) < 1000.], iters=100)
@@ -327,14 +340,23 @@ def plot_line_params(line_params, header=None, vel_min=-200., vel_max=200.,
     ax_vdp.colorbar.set_axis_label_text(r'$\sigma_{\rm v}$ [km s$^{-1}$]')
 
     ax_int.set_axis_labels_ydisp(-30)
-    ax_vel.hide_yaxis_label()
-    ax_vel.hide_ytick_labels()
-    ax_vdp.hide_yaxis_label()
-    ax_vdp.hide_ytick_labels()
 
-    fig.subplots_adjust(wspace=0.3)
+    if subplots:
+        ax_vel.hide_yaxis_label()
+        ax_vel.hide_ytick_labels()
+        ax_vdp.hide_yaxis_label()
+        ax_vdp.hide_ytick_labels()
+    else:
+        ax_vel.set_axis_labels_ydisp(-30)
+        ax_vdp.set_axis_labels_ydisp(-30)
 
-    return fig, [ax_int, ax_vel, ax_vdp]
+    if subplots:
+        fig.subplots_adjust(wspace=0.3)
+
+        return fig, [ax_int, ax_vel, ax_vdp]
+
+    else:
+        return [fig_int, fig_vel, fig_vdp], [ax_int, ax_vel, ax_vdp]
 
 
 def create_line_ratio_map(line1, line2, header, cmap='cubehelix',
