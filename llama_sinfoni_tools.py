@@ -1174,3 +1174,53 @@ def get_redshift(name):
     return z
 
 
+def calc_pixel_distance(header, center_coord):
+    """Function to calculate the distance of each pixel from the central coordinate (center_coord).
+
+    header = astropy.io.fits Header object for the cube or image. Must contain valid WCS keywords
+    center_coord = astropy.coordinates.SkyCoord object with the RA and DEC of the position
+                   that each pixel's distance from will be calculated.
+    """
+
+    # Setup the arrays for the pixel X and Y positions
+    nx = header['NAXIS1']
+    ny = header['NAXIS2']
+    xx, yy = np.meshgrid(range(nx), range(ny))
+
+    # Setup the WCS object, remove the third axis if it exists
+    if header['NAXIS'] == 3:
+        header['NAXIS'] = 2
+        header['WCSAXES'] = 2
+        header.remove('NAXIS3')
+        header.remove('CRPIX3')
+        header.remove('CDELT3')
+        header.remove('CUNIT3')
+        header.remove('CTYPE3')
+        header.remove('CRVAL3')
+
+    dummy_wcs = WCS(header)
+
+    # Convert the pixel positions to RA and DEC
+    ras, decs = dummy_wcs.all_pix2world(xx, yy, 0)
+    world_coords = apy_coord.SkyCoord(ra=ras*u.deg, dec=decs*u.deg, frame='fk5')
+
+    # Calculate the separation
+    seps = center_coord.separation(world_coords).to(u.arcsec)
+
+    # Calculate the position angle using just the pixel position
+    # Need to convert the center position to pixels
+    centerx, centery = dummy_wcs.all_world2pix(center_coord.ra, center_coord.dec, 0)
+
+    dx = xx - centerx
+    dy = yy - centery
+
+    #ind1 = (dy > 0)
+    #ind2 = (dy < 0)
+    #ind3 = (dx > 0) & (dy > 0)
+
+    #pa = np.zeros(dx.shape)
+    pa = -np.arctan(dx/dy)*180./np.pi
+    #pa[ind2] = -np.arctan(dx[ind2]/dy[ind2])*180./np.pi
+    #pa[ind3] = 360.-np.arctan(dx[ind3]/dy[ind3])*180./np.pi
+
+    return seps, pa
